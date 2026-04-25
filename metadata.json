@@ -1,0 +1,6 @@
+{
+  "name": "TutorNode",
+  "description": "AI-powered live STEM classroom with interactive chalkboard and voice synthesis teacher.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": []
+}

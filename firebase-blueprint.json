@@ -1,0 +1,41 @@
+{
+  "entities": {
+    "Feedback": {
+      "title": "Lesson Feedback",
+      "description": "Student feedback on lesson quality and relevance",
+      "type": "object",
+      "properties": {
+        "topic": { "type": "string", "description": "The topic of the lesson" },
+        "teacher_dialogue": { "type": "string", "description": "What the teacher said" },
+        "quality_score": { "type": "number", "description": "Score for teaching quality (1-5)" },
+        "relevance_score": { "type": "number", "description": "Score for relevance (1-5)" },
+        "comments": { "type": "string", "description": "Additional student comments" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "When the feedback was submitted" },
+        "userId": { "type": "string", "description": "ID of the student (if authenticated)" }
+      },
+      "required": ["topic", "quality_score", "relevance_score", "timestamp"]
+    },
+    "Lesson": {
+      "title": "Lesson History",
+      "description": "Record of a generated lesson topic and content",
+      "type": "object",
+      "properties": {
+        "topic": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "whiteboard_notes": { "type": "string" },
+        "teacher_dialogue": { "type": "string" }
+      },
+      "required": ["topic", "timestamp"]
+    }
+  },
+  "firestore": {
+    "feedbacks/{feedbackId}": {
+      "schema": "Feedback",
+      "description": "Collection of student feedbacks"
+    },
+    "lessons/{lessonId}": {
+      "schema": "Lesson",
+      "description": "Collection of past lessons"
+    }
+  }
+}
