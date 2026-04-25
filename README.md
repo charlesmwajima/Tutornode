@@ -1,20 +1,55 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# TutorNode: Universal AI Academy
 
-# Run and deploy your AI Studio app
+TutorNode is an advanced neural educational platform that leverages the power of Gemini 1.5 Flash to provide immersive, synchronized, multi-modal learning experiences. Designed for mastery-level education, it transforms any topic into a structured masterclass with synchronized visual slides, technical diagrams, and high-fidelity neural voice synthesis.
 
-This contains everything you need to run your app locally.
+## 🚀 Key Features
 
-View your app in AI Studio: https://ai.studio/apps/90b484a8-c879-4bc9-b32f-6e6dd42e49ec
+- **Neural Link Mastery**: Conducts exhaustive, 8-12 segment masterclasses on any topic.
+- **Synchronized Visuals**: Real-time slide generation with Markdown support, technical tables, and ASCII flowcharts.
+- **Bi-Lingual Support**: Seamlessly switch between English and Swahili for all educational content.
+- **AI-Driven Visuals**: Automatic generation of technical diagram prompts and scene descriptions.
+- **Interactive Neural Stream**: Bottom-aligned synchronized subtitles for enhanced accessibility.
+- **Adaptive Smartboard**: A futuristic educational interface designed for deep focus and technical clarity.
+- **Neural History**: Local persistence of previous lessons for quick reference.
 
-## Run Locally
+## 🛠️ Technology Stack
 
-**Prerequisites:**  Node.js
+- **Frontend**: React 18 with Vite
+- **AI Engine**: Google Gemini 1.5 Flash (via `@google/genai`)
+- **Animations**: `motion/react` (Framer Motion)
+- **Styling**: Tailwind CSS 4.0
+- **Voice Synthesis**: Web Speech API with adaptive language matching
+- **Icons**: Lucide React
+- **Markdown Rendering**: `react-markdown`
 
+## 📦 Installation & Setup
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. **Clone the repository**:
+   ```bash
+   git clone [repository-url]
+   cd tutornode
+   ```
+
+2. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+
+3. **Configure Environment**:
+   Ensure your `GEMINI_API_KEY` is set in your environment variables.
+
+4. **Start the development server**:
+   ```bash
+   npm run dev
+   ```
+
+## 🧠 Educational Workflow
+
+TutorNode uses a "Neural Link" paradigm:
+1. **Input**: User provides a topic (e.g., "Quantum Mechanics" or "Marine Diesel Engines").
+2. **Analysis**: The system queries Gemini with a specialized "Masterclass Prompt" that enforces a segmented structure.
+3. **Execution**: The platform starts a synchronized playback where each spoken segment is perfectly timed with its corresponding whiteboard slide.
+4. **Reinforcement**: Students can follow along with high-contrast visuals and real-time subtitles.
+
+---
+*Built for the next generation of engineers and scholars.*

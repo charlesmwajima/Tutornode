@@ -22,22 +22,22 @@ service cloud.firestore {
     // Pillar 2: Validation Blueprints
     function isValidFeedback(data) {
       return data.keys().hasAll(['topic', 'quality_score', 'relevance_score', 'timestamp']) &&
-             data.keys().size() >= 4 && data.keys().size() <= 7 &&
-             data.topic is string && data.topic.size() <= 200 &&
+             data.keys().size() >= 4 && data.keys().size() <= 10 &&
+             data.topic is string && data.topic.size() <= 500 &&
              data.quality_score is int && data.quality_score >= 1 && data.quality_score <= 5 &&
              data.relevance_score is int && data.relevance_score >= 1 && data.relevance_score <= 5 &&
              data.timestamp == request.time &&
-             (data.get('comments', '') is string && data.get('comments', '').size() <= 1000) &&
-             (data.get('teacher_dialogue', '') is string && data.get('teacher_dialogue', '').size() <= 1000) &&
+             (data.get('comments', '') is string && data.get('comments', '').size() <= 2000) &&
+             (data.get('teacher_dialogue', '') is string && data.get('teacher_dialogue', '').size() <= 20000) &&
              (data.get('userId', '') is string && data.get('userId', '').size() <= 128);
     }
 
     function isValidLesson(data) {
       return data.keys().hasAll(['topic', 'timestamp']) &&
-             data.topic is string && data.topic.size() <= 500 &&
+             data.topic is string && data.topic.size() <= 1000 &&
              data.timestamp == request.time &&
-             (data.get('whiteboard_notes', '') is string && data.get('whiteboard_notes', '').size() <= 50000) &&
-             (data.get('teacher_dialogue', '') is string && data.get('teacher_dialogue', '').size() <= 5000);
+             (data.get('whiteboard_notes', '') is string && data.get('whiteboard_notes', '').size() <= 100000) &&
+             (data.get('teacher_dialogue', '') is string && data.get('teacher_dialogue', '').size() <= 20000);
     }
 
     match /feedbacks/{feedbackId} {
@@ -53,7 +53,8 @@ service cloud.firestore {
 
     match /lessons/{lessonId} {
       // Allow creation of lessons. Auto-generated IDs are handled by the document pattern.
-      allow create: if isValidLesson(incoming());
+      // We allow anyone to create a lesson for now, but validate the content.
+      allow create: if isValidId(lessonId) && isValidLesson(incoming());
       // Allow reading lessons for history
       allow list: if true;
       allow get: if true;

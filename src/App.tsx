@@ -536,7 +536,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0c10] font-sans text-slate-100 overflow-hidden selection:bg-blue-500/30">
+    <div className="min-h-screen bg-[#0a0c10] font-sans text-slate-100 selection:bg-blue-500/30">
       {/* Top Bar */}
       <header className="h-16 bg-slate-900/80 backdrop-blur-md border-b border-white/5 flex items-center justify-between px-6 z-20 sticky top-0">
         <div className="flex items-center gap-4">
@@ -601,7 +601,7 @@ export default function App() {
       </div>
 
       {/* Main Grid */}
-      <main className="grid grid-cols-1 lg:grid-cols-12 h-[calc(100vh-64px)]">
+      <main className="grid grid-cols-1 lg:grid-cols-12 min-h-[calc(100vh-64px)] relative z-10">
         
         {/* Left column: AI Teacher Video Feed */}
         <div className="lg:col-span-5 border-r border-white/5 flex flex-col h-full bg-slate-900/20">
