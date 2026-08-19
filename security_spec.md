@@ -1,24 +1,52 @@
-# Security Specification - TutorNode feedback
+# Security Specification - OmniTutor
 
-## Data Invariants
-- A feedback must have a topic, quality_score, and relevance_score.
-- Scores must be integers between 1 and 5.
-- Timestamps must be equal to request.time on creation.
-- Once created, a feedback is immutable.
+## 1. Data Invariants
+- **Lessons**:
+  - `userId` must match the authenticated user.
+  - `timestamp` must be the server time.
+  - `topic`, `whiteboard_notes`, and `teacher_dialogue` must be strings within size limits.
+  - Documents are essentially immutable after creation (except maybe metadata, but here we treat lessons as logs).
+- **Feedbacks**:
+  - `quality_score` and `relevance_score` must be between 1 and 5.
+  - `userId` should match the user if authenticated.
+  - `timestamp` must be server time.
 
-## The "Dirty Dozen" Payloads (Deny cases)
-1.  **Missing required fields**: `{ topic: "History" }` (Missing scores)
-2.  **Invalid types**: `{ topic: "History", quality_score: "high" }` (Score must be number)
-3.  **Out of range scores**: `{ topic: "History", quality_score: 6 }` (Score > 5)
-4.  **String injection**: `{ topic: "A".repeat(1000) }` (Topic too long)
-5.  **Shadow update**: `{ ...valid, isVerified: true }` (Unknown field)
-6.  **Identity spoofing**: `{ ...valid, userId: "someone-else" }` (If userId is provided and doesn't match)
-7.  **Timestamp spoofing**: `{ ...valid, timestamp: "2020-01-01T00:00:00Z" }` (Not server time)
-8.  **Update attempt**: Trying to update an existing feedback.
-9.  **Delete attempt**: Trying to delete an existing feedback.
-10. **Query scraping**: `allow list: if true` (Without filtering)
-11. **ID Poisoning**: Creating a feedback with a 2KB document ID.
-12. **Blanket read**: Reading all feedbacks without being an admin.
+## 2. The "Dirty Dozen" Payloads (Denial Tests)
 
-## Test Runner (Logic verification)
-Tests will be implemented in `firestore.rules.test.ts`.
+### Lessons Collection
+1. **Identity Spoofing**: Create lesson with `userId: "attacker_id"`.
+2. **Resource Poisoning**: Create lesson with `topic` reaching 1MB.
+3. **Temporal Hijack**: Create lesson with `timestamp: "2000-01-01"`.
+4. **Unauthorized Read**: `list` or `get` lessons where `resource.data.userId != request.auth.uid`.
+5. **Ghost Update**: Update a lesson's `topic` after creation.
+6. **Orphan Write**: Write a lesson without a `userId`.
+
+### Feedbacks Collection
+7. **Score Overflow**: `quality_score: 10`.
+8. **Malicious Link**: Inject JS or huge strings in `comments`.
+9. **Identity Theft**: Submit feedback for another user's lesson ID (if linked).
+10. **Shadow Field**: Add `isAdmin: true` to a feedback doc.
+11. **Bypass Auth**: Create feedback while signed out (if policy requires auth).
+12. **Mass Querying**: Attempt to `list` all feedbacks without filtering by my own `userId`.
+
+## 3. Test Runner (Draft)
+
+```typescript
+// firestore.rules.test.ts
+// This file contains the logic to verify security assertions.
+// In a real environment, this runs using @firebase/rules-unit-testing.
+
+describe("OmniTutor Security Rules", () => {
+  it("should deny unauthenticated reads for lessons", async () => {
+    // ... test logic ...
+  });
+
+  it("should deny setting another user's ID for lessons", async () => {
+    // ... test logic ...
+  });
+
+  it("should enforce score range for feedback", async () => {
+    // ... test logic ...
+  });
+});
+```

@@ -1,6 +1,6 @@
-# TutorNode: Universal AI Academy
+# OmniTutor: Universal AI Academy
 
-TutorNode is an advanced neural educational platform that leverages the power of Gemini 1.5 Flash to provide immersive, synchronized, multi-modal learning experiences. Designed for mastery-level education, it transforms any topic into a structured masterclass with synchronized visual slides, technical diagrams, and high-fidelity neural voice synthesis.
+OmniTutor is an advanced neural educational platform that leverages the power of Gemini 1.5 Flash to provide immersive, synchronized, multi-modal learning experiences. Designed for mastery-level education, it transforms any topic into a structured masterclass with synchronized visual slides, technical diagrams, and high-fidelity neural voice synthesis.
 
 ## 🚀 Key Features
 
@@ -27,7 +27,7 @@ TutorNode is an advanced neural educational platform that leverages the power of
 1. **Clone the repository**:
    ```bash
    git clone [repository-url]
-   cd tutornode
+   cd omnitutor
    ```
 
 2. **Install dependencies**:
@@ -45,7 +45,7 @@ TutorNode is an advanced neural educational platform that leverages the power of
 
 ## 🧠 Educational Workflow
 
-TutorNode uses a "Neural Link" paradigm:
+OmniTutor uses a "Neural Link" paradigm:
 1. **Input**: User provides a topic (e.g., "Quantum Mechanics" or "Marine Diesel Engines").
 2. **Analysis**: The system queries Gemini with a specialized "Masterclass Prompt" that enforces a segmented structure.
 3. **Execution**: The platform starts a synchronized playback where each spoken segment is perfectly timed with its corresponding whiteboard slide.

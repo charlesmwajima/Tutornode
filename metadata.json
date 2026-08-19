@@ -1,6 +1,6 @@
 {
-  "name": "TutorNode",
-  "description": "AI-powered live STEM classroom with interactive chalkboard and voice synthesis teacher.",
+  "name": "OmniTutor Cinematic Academy",
+  "description": "Premium cinematic AI education platform with high-fidelity ARRI-grade video synthesis, interactive technical diagrams, and immersive voice tutors.",
   "requestFramePermissions": ["microphone"],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

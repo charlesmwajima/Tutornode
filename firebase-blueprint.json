@@ -23,9 +23,50 @@
         "topic": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" },
         "whiteboard_notes": { "type": "string" },
-        "teacher_dialogue": { "type": "string" }
+        "teacher_dialogue": { "type": "string" },
+        "userId": { "type": "string", "description": "Owner of the lesson" }
       },
-      "required": ["topic", "timestamp"]
+      "required": ["topic", "timestamp", "userId"]
+    },
+    "Syllabus": {
+      "title": "Syllabus Plan",
+      "description": "A structured academic syllabus detailing chapters and topics for automated course navigation",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Title of the syllabus" },
+        "description": { "type": "string", "description": "General description or subject overview" },
+        "userId": { "type": "string", "description": "ID of the creator (if authenticated)" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the syllabus was created" },
+        "chapters": {
+          "type": "array",
+          "description": "List of chapters within the syllabus structure"
+        }
+      },
+      "required": ["title", "description", "chapters"]
+    },
+    "AppSettings": {
+      "title": "Application Settings",
+      "description": "Global application configuration settings managed by Administrators",
+      "type": "object",
+      "properties": {
+        "comingSoon": { "type": "boolean", "description": "Whether the feature is currently in under-development 'coming soon' state" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["comingSoon", "updatedAt"]
+    },
+    "ExamPaper": {
+      "title": "Exam Paper",
+      "description": "An uploaded exam paper for teacher revision and solving",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "The name of the exam paper file" },
+        "mimeType": { "type": "string", "description": "The mime type of the file" },
+        "data": { "type": "string", "description": "The base64 encoded file content" },
+        "userId": { "type": "string", "description": "ID of the student who uploaded/shared the exam paper" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the exam paper was uploaded" }
+      },
+      "required": ["name", "mimeType", "data", "userId", "createdAt"]
     }
   },
   "firestore": {
@@ -36,6 +77,18 @@
     "lessons/{lessonId}": {
       "schema": "Lesson",
       "description": "Collection of past lessons"
+    },
+    "syllabi/{syllabusId}": {
+      "schema": "Syllabus",
+      "description": "Collection of shared student/instructor syllabi"
+    },
+    "appSettings/{settingId}": {
+      "schema": "AppSettings",
+      "description": "Global system-wide setting overrides"
+    },
+    "exams/{examId}": {
+      "schema": "ExamPaper",
+      "description": "Collection of shared exam papers"
     }
   }
 }

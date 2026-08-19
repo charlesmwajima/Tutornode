@@ -1,0 +1,7 @@
+1
+00:00:00,000 --> 00:00:03,144
+Welcome to OmniTutor Academy.
+
+2
+00:00:03,144 --> 00:00:06,288
+Get started by designing your first syllabus.

@@ -1,14 +1,22 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 0. Global Safety Net
+    // Default Deny
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Phase 3: Primitives
+    // --- Helper Functions ---
     function isSignedIn() {
       return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == 'charlesmwajima@gmail.com';
     }
 
     function isValidId(id) {
@@ -19,46 +27,94 @@ service cloud.firestore {
       return request.resource.data;
     }
 
-    // Pillar 2: Validation Blueprints
-    function isValidFeedback(data) {
-      return data.keys().hasAll(['topic', 'quality_score', 'relevance_score', 'timestamp']) &&
-             data.keys().size() >= 4 && data.keys().size() <= 10 &&
-             data.topic is string && data.topic.size() <= 500 &&
-             data.quality_score is int && data.quality_score >= 1 && data.quality_score <= 5 &&
-             data.relevance_score is int && data.relevance_score >= 1 && data.relevance_score <= 5 &&
-             data.timestamp == request.time &&
-             (data.get('comments', '') is string && data.get('comments', '').size() <= 2000) &&
-             (data.get('teacher_dialogue', '') is string && data.get('teacher_dialogue', '').size() <= 20000) &&
-             (data.get('userId', '') is string && data.get('userId', '').size() <= 128);
+    function existing() {
+      return resource.data;
     }
+
+    // --- Validation Blueprints ---
 
     function isValidLesson(data) {
-      return data.keys().hasAll(['topic', 'timestamp']) &&
-             data.topic is string && data.topic.size() <= 1000 &&
-             data.timestamp == request.time &&
-             (data.get('whiteboard_notes', '') is string && data.get('whiteboard_notes', '').size() <= 100000) &&
-             (data.get('teacher_dialogue', '') is string && data.get('teacher_dialogue', '').size() <= 20000);
+      return data.keys().hasAll(['topic', 'whiteboard_notes', 'teacher_dialogue', 'timestamp', 'userId'])
+        && data.topic is string && data.topic.size() <= 1000
+        && data.whiteboard_notes is string && data.whiteboard_notes.size() <= 100000
+        && data.teacher_dialogue is string && data.teacher_dialogue.size() <= 100000
+        && data.userId == request.auth.uid;
     }
 
-    match /feedbacks/{feedbackId} {
-      // Create: Anyone can submit feedback, but it must be valid
-      allow create: if isValidId(feedbackId) && isValidFeedback(incoming());
-      
-      // Read/Update/Delete: Denied for standard users
-      allow get: if false;
-      allow list: if false;
+    function isValidFeedback(data) {
+      return data.keys().hasAll(['topic', 'teacher_dialogue', 'quality_score', 'relevance_score', 'comments', 'timestamp', 'userId'])
+        && data.topic is string && data.topic.size() <= 1000
+        && data.teacher_dialogue is string && data.teacher_dialogue.size() <= 100000
+        && data.quality_score is number && data.quality_score >= 1 && data.quality_score <= 5
+        && data.relevance_score is number && data.relevance_score >= 1 && data.relevance_score <= 5
+        && data.comments is string && data.comments.size() <= 10000
+        && data.userId == request.auth.uid;
+    }
+
+    function isValidSyllabus(data) {
+      return data.keys().hasAll(['title', 'description', 'chapters', 'userId', 'createdAt'])
+        && data.title is string && data.title.size() <= 300
+        && data.description is string && data.description.size() <= 3000
+        && data.chapters is list
+        && data.userId == request.auth.uid;
+    }
+
+    function isValidAppSettings(data) {
+      return data.keys().hasAll(['comingSoon', 'updatedAt'])
+        && data.comingSoon is bool;
+    }
+
+    function isValidExamPaper(data) {
+      return data.keys().hasAll(['name', 'mimeType', 'data', 'userId', 'createdAt'])
+        && data.name is string && data.name.size() <= 300
+        && data.mimeType is string && data.mimeType.size() <= 100
+        && data.data is string && data.data.size() <= 40000000
+        && data.userId == request.auth.uid;
+    }
+
+    // --- Collection Routes ---
+
+    match /test/connection {
+      allow read: if true;
+    }
+
+    match /syllabi/{syllabusId} {
+      allow get: if isValidId(syllabusId);
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidSyllabus(incoming());
       allow update: if false;
-      allow delete: if false;
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /lessons/{lessonId} {
-      // Allow creation of lessons. Auto-generated IDs are handled by the document pattern.
-      // We allow anyone to create a lesson for now, but validate the content.
-      allow create: if isValidId(lessonId) && isValidLesson(incoming());
-      // Allow reading lessons for history
-      allow list: if true;
-      allow get: if true;
-      allow update, delete: if false;
+      allow get: if isValidId(lessonId) && (isOwner(existing().userId) || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidLesson(incoming());
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /feedbacks/{feedbackId} {
+      allow get: if isValidId(feedbackId) && (isOwner(existing().userId) || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidFeedback(incoming());
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /appSettings/{settingId} {
+      allow get: if isValidId(settingId);
+      allow list: if isSignedIn();
+      allow create, update: if isAdmin() && isValidAppSettings(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /exams/{examId} {
+      allow get: if isValidId(examId);
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && isValidExamPaper(incoming());
+      allow update: if false;
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
   }
 }
