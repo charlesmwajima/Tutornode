@@ -849,43 +849,56 @@ export const VideoSmartboard: React.FC<VideoSmartboardProps> = ({
                 </div>
 
                 <div className="flex-1 overflow-y-auto custom-scrollbar pr-4 mb-4 pb-20 md:pb-32">
-                  {/* Conditional centering: center only if it's short content (a slide) and no diagram */}
-                  <div className={`min-h-full flex flex-col ${(diagramUrl || diagramSvg) ? 'lg:flex-row lg:items-center' : ((lessonSegments[currentSlideIndex]?.content || currentSlideContent || whiteboardNotes).length < 500 ? 'items-center justify-center' : 'items-start justify-start')} gap-12`}>
-                    <motion.div 
-                      key={currentSlideIndex}
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.8, ease: "easeOut" }}
-                      className={`relative z-10 flex-1 w-full prose ${isCinematicMode ? 'prose-invert font-sans' : 'prose-invert font-serif font-medium chalk-text'} max-w-none 
-                      prose-h1:text-center prose-h1:text-4xl md:prose-h1:text-5xl prose-h1:font-black ${isCinematicMode ? 'text-white' : 'text-white/90 text-shadow-sm shadow-white/20'} prose-h1:mb-10 prose-h1:tracking-tight prose-h1:border-b-4 ${isCinematicMode ? 'border-blue-600' : 'border-emerald-600/30'} prose-h1:pb-6
-                      prose-h2:${isCinematicMode ? 'text-blue-500' : 'text-emerald-400'} prose-h2:text-2xl md:prose-h2:text-3xl prose-h2:font-bold prose-h2:mt-12 prose-h2:mb-8 prose-h2:uppercase prose-h2:tracking-wider
-                      prose-h3:${isCinematicMode ? 'text-blue-400' : 'text-emerald-300'} prose-h3:text-xl md:prose-h3:text-2xl prose-h3:font-semibold prose-h3:mt-10 prose-h3:mb-6
-                      ${isCinematicMode ? 'prose-p:text-blue-50/90' : 'prose-p:text-white/80'} prose-p:text-xl md:prose-p:text-2xl prose-p:leading-relaxed
-                      ${isCinematicMode ? 'prose-li:text-white/90' : 'prose-li:text-white/70'} prose-li:text-xl md:prose-li:text-2xl prose-li:mb-4
-                      prose-table:w-full prose-table:border-collapse prose-th:${isCinematicMode ? 'bg-blue-600/10 text-blue-500' : 'bg-white/5 text-emerald-400'} prose-th:p-4 prose-th:text-left prose-td:p-4 prose-td:border prose-td:border-white/10
-                      prose-strong:${isCinematicMode ? 'text-blue-500' : 'text-emerald-400'} shadow-none overflow-hidden`}
-                    >
-                      {isCinematicMode && (
-                        <div className="absolute inset-0 pointer-events-none opacity-5 -z-10" 
-                             style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(59, 130, 246, 0.4) 1px, transparent 0)', backgroundSize: '24px 24px' }}>
-                        </div>
-                      )}
-                      {renderedMarkdown}
-                    </motion.div>
+                  {/* Dynamic Slide Diagram Extraction */}
+                  {(() => {
+                    const currentSegment = lessonSegments && lessonSegments[currentSlideIndex];
+                    const activeDiagramSvg = currentSegment?.diagram_svg_code || diagramSvg;
+                    const activeDiagramUrl = currentSegment?.diagram_url || diagramUrl;
+                    const activeDiagramTitle = currentSegment?.diagram_title;
+                    const activeTopic = currentSegment?.content || currentSlideContent || whiteboardNotes;
+                    const hasDiagram = Boolean(activeDiagramSvg || activeDiagramUrl || activeTopic);
 
-                  {(diagramSvg || diagramUrl) && (
-                    <div className="flex-1 w-full max-w-2xl">
-                      <InteractiveDiagram
-                        svgCode={diagramSvg}
-                        imageUrl={diagramUrl}
-                        topic={lessonSegments[currentSlideIndex]?.content || currentSlideContent || whiteboardNotes}
-                        language={language}
-                        isCinematicMode={isCinematicMode}
-                        onAskMwalimu={onHighlightAsk}
-                      />
-                    </div>
-                  )}
-                  </div>
+                    return (
+                      <div className={`min-h-full flex flex-col ${hasDiagram ? 'lg:flex-row lg:items-center' : ((currentSegment?.content || currentSlideContent || whiteboardNotes).length < 500 ? 'items-center justify-center' : 'items-start justify-start')} gap-12`}>
+                        <motion.div 
+                          key={currentSlideIndex}
+                          initial={{ opacity: 0, scale: 0.98 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ duration: 0.8, ease: "easeOut" }}
+                          className={`relative z-10 flex-1 w-full prose ${isCinematicMode ? 'prose-invert font-sans' : 'prose-invert font-serif font-medium chalk-text'} max-w-none 
+                          prose-h1:text-center prose-h1:text-4xl md:prose-h1:text-5xl prose-h1:font-black ${isCinematicMode ? 'text-white' : 'text-white/90 text-shadow-sm shadow-white/20'} prose-h1:mb-10 prose-h1:tracking-tight prose-h1:border-b-4 ${isCinematicMode ? 'border-blue-600' : 'border-emerald-600/30'} prose-h1:pb-6
+                          prose-h2:${isCinematicMode ? 'text-blue-500' : 'text-emerald-400'} prose-h2:text-2xl md:prose-h2:text-3xl prose-h2:font-bold prose-h2:mt-12 prose-h2:mb-8 prose-h2:uppercase prose-h2:tracking-wider
+                          prose-h3:${isCinematicMode ? 'text-blue-400' : 'text-emerald-300'} prose-h3:text-xl md:prose-h3:text-2xl prose-h3:font-semibold prose-h3:mt-10 prose-h3:mb-6
+                          ${isCinematicMode ? 'prose-p:text-blue-50/90' : 'prose-p:text-white/80'} prose-p:text-xl md:prose-p:text-2xl prose-p:leading-relaxed
+                          ${isCinematicMode ? 'prose-li:text-white/90' : 'prose-li:text-white/70'} prose-li:text-xl md:prose-li:text-2xl prose-li:mb-4
+                          prose-table:w-full prose-table:border-collapse prose-th:${isCinematicMode ? 'bg-blue-600/10 text-blue-500' : 'bg-white/5 text-emerald-400'} prose-th:p-4 prose-th:text-left prose-td:p-4 prose-td:border prose-td:border-white/10
+                          prose-strong:${isCinematicMode ? 'text-blue-500' : 'text-emerald-400'} shadow-none overflow-hidden`}
+                        >
+                          {isCinematicMode && (
+                            <div className="absolute inset-0 pointer-events-none opacity-5 -z-10" 
+                                 style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(59, 130, 246, 0.4) 1px, transparent 0)', backgroundSize: '24px 24px' }}>
+                            </div>
+                          )}
+                          {renderedMarkdown}
+                        </motion.div>
+
+                        {hasDiagram && (
+                          <div className="flex-1 w-full max-w-2xl">
+                            <InteractiveDiagram
+                              key={`diagram-slide-${currentSlideIndex}`}
+                              svgCode={activeDiagramSvg}
+                              imageUrl={activeDiagramUrl}
+                              diagramTitle={activeDiagramTitle}
+                              topic={activeTopic}
+                              language={language}
+                              isCinematicMode={isCinematicMode}
+                              onAskMwalimu={onHighlightAsk}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </div>
 
 

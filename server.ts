@@ -6621,7 +6621,7 @@ FORMATTING RULES:
           8. MATHEMATICS & CALCULATIONS RULES: If the topic involves formulas, math, or calculations of any kind (including science equations, calculations, arithmetic), you MUST explicitly formulate concrete examples of questions and solve them on the board, showing the entire step-by-step mathematical workout (equations, calculations, substitutions) directly inside the "content" markdown so the student can follow the math on the board. You must also explain this workout step-by-step in the "speech" narration context!
         - Slide Verbal Lecture ("speech" prop): Write an extensive, verbose, and comprehensive masterclass lecture explaining the slide context from top to bottom in a lively, professional educational voice.
 
-        Schema: { "segments": [{ "content": "Markdown following the explicit clean textbook format with sequential numbered headings (e.g. 1., 2., 3.)", "speech": "Spoken explanation for this slide ending with check-for-understanding question" }], "visual_diagram_prompt": "string", "diagram_svg_code": "string (valid SVG code with subtle CSS animations)", "video_scene": "string", "video_keyword": "string", "status": "success" }
+        Schema: { "segments": [{ "content": "Markdown following the explicit clean textbook format with sequential numbered headings (e.g. 1., 2., 3.)", "speech": "Spoken explanation for this slide ending with check-for-understanding question", "diagram_svg_code": "Valid clean animated SVG code specifically illustrating the exact concept/mechanism/formula of this slide", "diagram_title": "Short title describing the diagram for this specific slide" }], "visual_diagram_prompt": "string", "diagram_svg_code": "string (valid SVG code for overall lesson)", "video_scene": "string", "video_keyword": "string", "status": "success" }
   
          Respond ONLY in JSON matching the responseSchema.`;
 
@@ -6718,7 +6718,10 @@ FORMATTING RULES:
           8. MATHEMATICS & CALCULATIONS RULES: If the topic involves formulas, math, or calculations of any kind (including science equations, calculations, arithmetic), you MUST explicitly formulate concrete examples of questions and solve them on the board, showing the entire step-by-step mathematical workout (equations, calculations, substitutions) directly inside the "content" markdown so the student can follow the math on the board. You must also explain this workout step-by-step in the "speech" narration context!
         - Slide Verbal Lecture ("speech" prop): Write an extensive, verbose, and comprehensive masterclass lecture explaining the slide context from top to bottom in a lively, professional educational voice.
 
-        Schema: { "segments": [{ "content": "Markdown following the explicit clean textbook format with sequential numbered headings (e.g. 1., 2., 3.)", "speech": "Spoken explanation for this slide ending with check-for-understanding question" }], "visual_diagram_prompt": "string", "diagram_svg_code": "string (valid SVG code with subtle CSS animations)", "video_scene": "string", "video_keyword": "string", "status": "success" }
+        - DYNAMIC PER-SLIDE DIAGRAM SYNCHRONIZATION DIRECTIVE:
+          The visual diagram on the smartboard MUST change dynamically to display the specific machine, component, subtype, or schematic that the teacher is discussing on that exact slide (e.g. for clutches: Single Plate Clutch, Multi-Plate Clutch, Cone Clutch, Centrifugal Clutch, Hydraulic Clutch, or Torque Free-Body Diagram). Each segment in segments array MUST have its own unique diagram_svg_code and diagram_title!
+
+        Schema: { "segments": [{ "content": "Markdown following the explicit clean textbook format with sequential numbered headings (e.g. 1., 2., 3.)", "speech": "Spoken explanation for this slide ending with check-for-understanding question", "diagram_svg_code": "Valid clean animated SVG code specifically illustrating the exact concept/mechanism/formula of this slide", "diagram_title": "Short title describing the diagram for this specific slide" }], "visual_diagram_prompt": "string", "diagram_svg_code": "string (valid SVG code for overall lesson)", "video_scene": "string", "video_keyword": "string", "status": "success" }
 
          Respond ONLY in JSON matching the responseSchema.`;
 
@@ -6813,8 +6816,10 @@ FORMATTING RULES:
          YOUR MISSION: Break the complete exam revision workshop into exactly ${targetSlides} SYNCHRONIZED segments covering ALL questions in the paper.
          - Slide Markdown Content ("content" prop):
            This forms the student's study notes on the whiteboard. Format it with clean section headers (e.g. "### 1. REVISION ROADMAP & OVERVIEW", "### 2. CONCEPT FOUNDATION: [TOPIC NAME]", "### 3. EXAM QUESTION RESOLUTION: [Q#]", "### 4. DERIVATIONS & THEORY", "### 5. COMMON TRAPS & PRACTICE", "### 6. FINAL SUMMARY & FORMULAS"), generous empty lines, and step-by-step calculations.
+         - DYNAMIC PER-SLIDE DIAGRAM SYNCHRONIZATION DIRECTIVE:
+           The visual diagram on the smartboard MUST change dynamically to display the specific machine, component, subtype, or schematic that the teacher is discussing on that exact slide (e.g. for clutches: Single Plate Clutch, Multi-Plate Clutch, Cone Clutch, Centrifugal Clutch, Hydraulic Clutch, or Torque Free-Body Diagram). Each segment in segments array MUST have its own unique diagram_svg_code and diagram_title!
 
-         Schema: { "segments": [{ "content": "Markdown following the explicit exam revision layout", "speech": "Spoken explanation for this slide ending with a question to check understanding" }], "visual_diagram_prompt": "string", "diagram_svg_code": "string (valid SVG code with subtle CSS animations)", "video_scene": "string", "video_keyword": "string", "status": "success" }
+         Schema: { "segments": [{ "content": "Markdown following the explicit exam revision layout", "speech": "Spoken explanation for this slide ending with a question to check understanding", "diagram_svg_code": "Valid clean animated SVG code specifically illustrating the exact concept/mechanism/formula of this slide", "diagram_title": "Short title describing the diagram for this specific slide" }], "visual_diagram_prompt": "string", "diagram_svg_code": "string (valid SVG code for overall lesson)", "video_scene": "string", "video_keyword": "string", "status": "success" }
    
          Respond ONLY in JSON matching the responseSchema.`;
 
@@ -6839,7 +6844,9 @@ FORMATTING RULES:
                   type: Type.OBJECT,
                   properties: {
                     content: { type: Type.STRING },
-                    speech: { type: Type.STRING }
+                    speech: { type: Type.STRING },
+                    diagram_svg_code: { type: Type.STRING },
+                    diagram_title: { type: Type.STRING }
                   },
                   required: ["content", "speech"]
                 }

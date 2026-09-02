@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import DOMPurify from 'dompurify';
+import { getSlideSynchronizedDiagram } from './dynamicDiagramSvgs';
 
 export interface DiagramLabel {
   id: string;
@@ -19,6 +20,7 @@ export interface DiagramLabel {
 interface InteractiveDiagramProps {
   svgCode?: string | null;
   imageUrl?: string | null;
+  diagramTitle?: string | null;
   topic?: string;
   language?: 'en' | 'sw';
   isCinematicMode?: boolean;
@@ -28,6 +30,7 @@ interface InteractiveDiagramProps {
 export const InteractiveDiagram: React.FC<InteractiveDiagramProps> = ({
   svgCode,
   imageUrl,
+  diagramTitle,
   topic = '',
   language = 'en',
   isCinematicMode = false,
@@ -41,18 +44,41 @@ export const InteractiveDiagram: React.FC<InteractiveDiagramProps> = ({
   const [isCopied, setIsCopied] = useState<boolean>(false);
   const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
 
+  // Synchronized subtopic detection from active slide content
+  const synchronizedData = useMemo(() => {
+    return getSlideSynchronizedDiagram(topic, isSw);
+  }, [topic, isSw]);
+
+  // Determine active SVG code (prefer AI generated slide SVG if valid, otherwise synchronized procedural diagram)
+  const effectiveSvg = useMemo(() => {
+    if (svgCode && svgCode.includes('<svg')) return svgCode;
+    if (synchronizedData?.svg) return synchronizedData.svg;
+    return null;
+  }, [synchronizedData, svgCode]);
+
+  // Determine active title
+  const effectiveTitle = useMemo(() => {
+    if (diagramTitle) return diagramTitle;
+    if (synchronizedData?.title) return synchronizedData.title;
+    return isSw ? 'Mchoro Mwingiliano' : 'Interactive Technical Diagram';
+  }, [diagramTitle, synchronizedData, isSw]);
+
   // Sanitize SVG
   const sanitizedSvg = useMemo(() => {
-    if (!svgCode) return null;
-    return DOMPurify.sanitize(svgCode, {
+    if (!effectiveSvg) return null;
+    return DOMPurify.sanitize(effectiveSvg, {
       USE_PROFILES: { svg: true, svgFilters: true },
       ADD_TAGS: ['animate', 'animateMotion', 'animateTransform', 'path', 'g', 'circle', 'text', 'line', 'polyline', 'polygon', 'rect', 'ellipse', 'defs', 'linearGradient', 'radialGradient', 'stop', 'use', 'filter'],
       ADD_ATTR: ['values', 'dur', 'repeatCount', 'attributeName', 'type', 'transform', 'keyTimes', 'path', 'marker-end', 'stop-color', 'stop-opacity', 'stroke-dasharray', 'stroke-dashoffset', 'viewBox']
     });
-  }, [svgCode]);
+  }, [effectiveSvg]);
 
   // Extract or synthesize interactive labels based on domain recognition and SVG analysis
   const diagramLabels: DiagramLabel[] = useMemo(() => {
+    if (synchronizedData?.labels && synchronizedData.labels.length > 0) {
+      return synchronizedData.labels;
+    }
+
     const combinedText = `${topic} ${svgCode || ''}`.toLowerCase();
     const labels: DiagramLabel[] = [];
 
@@ -517,11 +543,11 @@ export const InteractiveDiagram: React.FC<InteractiveDiagramProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-slate-900/80 backdrop-blur-md rounded-2xl border border-white/10 shadow-lg z-30">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-blue-500 animate-ping"></div>
-          <span className="text-[10px] font-black text-blue-300 uppercase tracking-widest font-mono">
-            {isSw ? 'Mchoro Mwingiliano (Smart Diagram)' : 'Interactive Technical Diagram'}
+          <span className="text-[10px] font-black text-blue-300 uppercase tracking-widest font-mono line-clamp-1">
+            {effectiveTitle}
           </span>
           <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-[9px] font-bold border border-blue-500/30">
-            {diagramLabels.length} {isSw ? 'Lebo' : 'Labels'}
+            {diagramLabels.length} {isSw ? 'Lebo' : 'Pins'}
           </span>
         </div>
 

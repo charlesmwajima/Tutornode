@@ -8,7 +8,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, Lock, User, LogIn, UserPlus, Fingerprint, Sparkles, ShieldCheck, ExternalLink } from 'lucide-react';
+import { Mail, Lock, User, LogIn, UserPlus, Fingerprint, Sparkles, ShieldCheck, ExternalLink, Copy, Check, Globe, AlertTriangle } from 'lucide-react';
 
 interface AuthGateProps {
   onSuccess?: () => void;
@@ -21,11 +21,24 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSuccess, onSandboxAccess }
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isUnauthorizedDomain, setIsUnauthorizedDomain] = useState(false);
+  const [copiedDomain, setCopiedDomain] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+
+  const copyHostname = () => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(currentHostname);
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 2000);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setIsUnauthorizedDomain(false);
     setLoading(true);
 
     try {
@@ -42,9 +55,9 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSuccess, onSandboxAccess }
     } catch (err: any) {
       console.error("Auth error:", err);
       let message = "Authentication failed. Please check your credentials.";
-      if (err.code === 'auth/email-already-in-use') message = "This email is already registered.";
-      if (err.code === 'auth/wrong-password') message = "Incorrect password.";
-      if (err.code === 'auth/user-not-found') message = "No account found with this email.";
+      if (err.code === 'auth/email-already-in-use') message = "This email is already registered. Please switch to SIGN IN.";
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') message = "Incorrect password or credentials.";
+      if (err.code === 'auth/user-not-found') message = "No account found with this email. Click REGISTER above to create one.";
       if (err.code === 'auth/weak-password') message = "Password should be at least 6 characters.";
       setError(message);
     } finally {
@@ -54,6 +67,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSuccess, onSandboxAccess }
 
   const handleGoogleLogin = async () => {
     setError(null);
+    setIsUnauthorizedDomain(false);
     setLoading(true);
     const provider = new GoogleAuthProvider();
     try {
@@ -68,12 +82,15 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSuccess, onSandboxAccess }
       console.error("Google login error:", err);
       const errCode = err.code || "";
       const errMsg = err.message || "";
-      if (errCode === "auth/popup-blocked" || errMsg.includes("popup")) {
+      if (errCode === "auth/unauthorized-domain" || errMsg.includes("unauthorized-domain")) {
+        setIsUnauthorizedDomain(true);
+        setError(`Domain '${currentHostname}' is not yet added to your Firebase Authorized Domains.`);
+      } else if (errCode === "auth/popup-blocked" || errMsg.includes("popup")) {
         setError("🔒 Google Login popup was blocked by your browser or the sandbox iframe! Please try using the standard Email Address & Password input above to sign in or register instantly, or click 'Launch Sandbox Demo Mode' to bypass authentication.");
       } else if (errCode === "auth/internal-error" || errMsg.includes("internal-error") || errMsg.includes("auth/internal-error")) {
-        setError(`🔒 Google Sign-In failed with 'auth/internal-error'. This usually happens because: 1) Google Sign-In is not yet enabled in your Firebase console under Authentication, 2) This preview domain (${window.location.hostname}) is not added to your Firebase 'Authorized Domains' list, or 3) Third-party iframe cookies are blocked. To fix: Please enable Google Sign-In and authorize this domain in your Firebase Console, use standard Email/Password sign-in, or click 'Launch Sandbox Demo Mode'!`);
+        setError(`🔒 Google Sign-In failed with 'auth/internal-error'. This usually happens because: 1) Google Sign-In is not yet enabled in your Firebase console under Authentication, 2) This preview domain (${currentHostname}) is not added to your Firebase 'Authorized Domains' list, or 3) Third-party iframe cookies are blocked.`);
       } else {
-        setError(`Sync Google link error: ${errMsg || 'popup window or third-party cookies are blocked in this iframe.'} Please register with Email/Password (works inside any sandbox) or click 'Launch Sandbox Demo Mode' below to try it out instantly!`);
+        setError(`Sync Google link error: ${errMsg || 'popup window or third-party cookies are blocked in this iframe.'} Please register with Email/Password (works anywhere) or click 'Launch Sandbox Demo Mode' to try it out instantly!`);
       }
     } finally {
       setLoading(false);
@@ -200,11 +217,55 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSuccess, onSandboxAccess }
                 <motion.div 
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="bg-red-500/10 border border-red-500/20 p-3.5 rounded-xl flex items-center gap-3 text-red-500 text-xs font-bold"
+                  className="bg-red-500/10 border border-red-500/20 p-3.5 rounded-xl flex items-start gap-3 text-red-400 text-xs font-semibold"
                 >
-                  <ShieldCheck size={16} className="shrink-0" />
+                  <AlertTriangle size={16} className="shrink-0 mt-0.5 text-red-400" />
                   <span className="leading-relaxed">{error}</span>
                 </motion.div>
+
+                {isUnauthorizedDomain && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-amber-950/30 border border-amber-500/30 rounded-2xl p-4 space-y-3 text-xs"
+                  >
+                    <div className="flex items-center gap-2 text-amber-400 font-bold">
+                      <Globe size={14} />
+                      <span>How to Authorize Domain for Google Sign-In:</span>
+                    </div>
+
+                    <p className="text-[11px] text-zinc-300 leading-relaxed">
+                      Google OAuth requires domains to be whitelisted. To enable Google Sign-In on this link:
+                    </p>
+
+                    <div className="bg-black/60 rounded-xl p-2.5 border border-white/10 flex items-center justify-between gap-2 font-mono text-[11px] text-amber-200">
+                      <span className="truncate">{currentHostname || 'this domain'}</span>
+                      <button
+                        type="button"
+                        onClick={copyHostname}
+                        className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-lg text-[10px] font-bold flex items-center gap-1 shrink-0 transition-colors cursor-pointer"
+                      >
+                        {copiedDomain ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                        <span>{copiedDomain ? 'Copied!' : 'Copy Domain'}</span>
+                      </button>
+                    </div>
+
+                    <ol className="text-[10px] text-zinc-400 list-decimal list-inside space-y-1">
+                      <li>Go to <strong className="text-zinc-200">Firebase Console &gt; Authentication &gt; Settings</strong></li>
+                      <li>Select <strong className="text-zinc-200">Authorized domains &gt; Add domain</strong></li>
+                      <li>Paste <code className="text-amber-300">{currentHostname}</code> and save.</li>
+                    </ol>
+
+                    <div className="pt-2 border-t border-white/5 flex flex-col gap-1.5">
+                      <p className="text-[10px] font-bold text-emerald-400">
+                        ✨ Instant Alternative (No setup needed):
+                      </p>
+                      <p className="text-[10px] text-zinc-300">
+                        Use <strong>Email &amp; Password</strong> above (or click <strong>REGISTER</strong>) or click <strong>Launch Sandbox Demo Mode</strong> below!
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
 
                 {(error.toLowerCase().includes("popup") || error.toLowerCase().includes("blocked") || error.toLowerCase().includes("internal-error")) && (
                   <motion.div
