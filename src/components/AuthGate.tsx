@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   updateProfile
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mail, Lock, User, LogIn, UserPlus, Fingerprint, Sparkles, ShieldCheck, ExternalLink, Copy, Check, Globe, AlertTriangle } from 'lucide-react';
+import { Mail, Lock, User, LogIn, UserPlus, Fingerprint, Sparkles, ShieldCheck, ExternalLink, Copy, Check, Globe, AlertTriangle, ArrowRight, RefreshCw } from 'lucide-react';
 
 interface AuthGateProps {
   onSuccess?: () => void;
@@ -22,10 +24,45 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSuccess, onSandboxAccess }
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isUnauthorizedDomain, setIsUnauthorizedDomain] = useState(false);
+  const [isPopupBlocked, setIsPopupBlocked] = useState(false);
   const [copiedDomain, setCopiedDomain] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isRedirecting, setIsRedirecting] = useState(false);
 
   const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isVercelDomain = currentHostname.includes('vercel.app');
+
+  // Handle redirect result if user came back from signInWithRedirect
+  useEffect(() => {
+    let isMounted = true;
+    getRedirectResult(auth)
+      .then((result) => {
+        if (!isMounted) return;
+        if (result && result.user) {
+          const isNewUser = result.user?.metadata?.creationTime === result.user?.metadata?.lastSignInTime;
+          if (isNewUser) {
+            localStorage.setItem('omnitutor_just_signed_up', 'true');
+          }
+          onSuccess?.();
+        }
+      })
+      .catch((err: any) => {
+        if (!isMounted) return;
+        console.error("Redirect auth error:", err);
+        const errCode = err?.code || "";
+        const errMsg = err?.message || "";
+        if (errCode === "auth/unauthorized-domain" || errMsg.includes("unauthorized-domain")) {
+          setIsUnauthorizedDomain(true);
+          setError(`Domain '${currentHostname}' is not authorized in Firebase Console.`);
+        } else if (errCode) {
+          setError(errMsg || "Google Sign-In failed.");
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentHostname, onSuccess]);
 
   const copyHostname = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
@@ -39,6 +76,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSuccess, onSandboxAccess }
     e.preventDefault();
     setError(null);
     setIsUnauthorizedDomain(false);
+    setIsPopupBlocked(false);
     setLoading(true);
 
     try {
@@ -68,6 +106,7 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSuccess, onSandboxAccess }
   const handleGoogleLogin = async () => {
     setError(null);
     setIsUnauthorizedDomain(false);
+    setIsPopupBlocked(false);
     setLoading(true);
     const provider = new GoogleAuthProvider();
     try {
@@ -86,14 +125,41 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSuccess, onSandboxAccess }
         setIsUnauthorizedDomain(true);
         setError(`Domain '${currentHostname}' is not yet added to your Firebase Authorized Domains.`);
       } else if (errCode === "auth/popup-blocked" || errMsg.includes("popup")) {
-        setError("🔒 Google Login popup was blocked by your browser or the sandbox iframe! Please try using the standard Email Address & Password input above to sign in or register instantly, or click 'Launch Sandbox Demo Mode' to bypass authentication.");
+        setIsPopupBlocked(true);
+        if (isVercelDomain) {
+          setIsUnauthorizedDomain(true);
+        }
+        setError("🔒 Google Login popup was blocked by your browser! You can use 'Sign In with Google (Redirect Mode)' below (which doesn't require popups), sign in with Email & Password, or click 'Launch Sandbox Demo Mode'.");
       } else if (errCode === "auth/internal-error" || errMsg.includes("internal-error") || errMsg.includes("auth/internal-error")) {
-        setError(`🔒 Google Sign-In failed with 'auth/internal-error'. This usually happens because: 1) Google Sign-In is not yet enabled in your Firebase console under Authentication, 2) This preview domain (${currentHostname}) is not added to your Firebase 'Authorized Domains' list, or 3) Third-party iframe cookies are blocked.`);
+        setIsUnauthorizedDomain(true);
+        setError(`🔒 Google Sign-In failed with 'auth/internal-error'. This usually happens because: 1) Google Sign-In is not yet enabled in your Firebase console under Authentication, 2) This preview/deployment domain (${currentHostname}) is not added to your Firebase 'Authorized Domains' list, or 3) Third-party cookies are blocked.`);
       } else {
-        setError(`Sync Google link error: ${errMsg || 'popup window or third-party cookies are blocked in this iframe.'} Please register with Email/Password (works anywhere) or click 'Launch Sandbox Demo Mode' to try it out instantly!`);
+        setError(`Sync Google link error: ${errMsg || 'popup window or cookies blocked.'} Please register with Email/Password (works anywhere) or use Redirect Sign-In!`);
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleRedirectLogin = async () => {
+    setError(null);
+    setLoading(true);
+    setIsRedirecting(true);
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithRedirect(auth, provider);
+    } catch (err: any) {
+      console.error("Google redirect login error:", err);
+      const errCode = err.code || "";
+      const errMsg = err.message || "";
+      if (errCode === "auth/unauthorized-domain" || errMsg.includes("unauthorized-domain")) {
+        setIsUnauthorizedDomain(true);
+        setError(`Domain '${currentHostname}' is not authorized. Please add it to your Firebase Authorized Domains.`);
+      } else {
+        setError(`Google Redirect error: ${errMsg || 'Unable to redirect to Google'}`);
+      }
+      setLoading(false);
+      setIsRedirecting(false);
     }
   };
 
@@ -223,19 +289,19 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSuccess, onSandboxAccess }
                   <span className="leading-relaxed">{error}</span>
                 </motion.div>
 
-                {isUnauthorizedDomain && (
+                {(isUnauthorizedDomain || isVercelDomain) && (
                   <motion.div
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="bg-amber-950/30 border border-amber-500/30 rounded-2xl p-4 space-y-3 text-xs"
+                    className="bg-amber-950/40 border border-amber-500/30 rounded-2xl p-4 space-y-3 text-xs"
                   >
                     <div className="flex items-center gap-2 text-amber-400 font-bold">
                       <Globe size={14} />
-                      <span>How to Authorize Domain for Google Sign-In:</span>
+                      <span>Firebase Authorized Domain Required:</span>
                     </div>
 
                     <p className="text-[11px] text-zinc-300 leading-relaxed">
-                      Google OAuth requires domains to be whitelisted. To enable Google Sign-In on this link:
+                      For Google Sign-In to work on Vercel, Firebase requires your domain to be whitelisted:
                     </p>
 
                     <div className="bg-black/60 rounded-xl p-2.5 border border-white/10 flex items-center justify-between gap-2 font-mono text-[11px] text-amber-200">
@@ -251,36 +317,49 @@ export const AuthGate: React.FC<AuthGateProps> = ({ onSuccess, onSandboxAccess }
                     </div>
 
                     <ol className="text-[10px] text-zinc-400 list-decimal list-inside space-y-1">
-                      <li>Go to <strong className="text-zinc-200">Firebase Console &gt; Authentication &gt; Settings</strong></li>
-                      <li>Select <strong className="text-zinc-200">Authorized domains &gt; Add domain</strong></li>
-                      <li>Paste <code className="text-amber-300">{currentHostname}</code> and save.</li>
+                      <li>Open <a href="https://console.firebase.google.com/project/bwai-pwani-charles/authentication/settings" target="_blank" rel="noopener noreferrer" className="text-amber-300 underline font-semibold">Firebase Console &gt; Auth Settings <ExternalLink size={10} className="inline ml-0.5" /></a></li>
+                      <li>Scroll to <strong className="text-zinc-200">Authorized domains &gt; Add domain</strong></li>
+                      <li>Paste <code className="text-amber-300 bg-black/40 px-1 py-0.5 rounded">{currentHostname}</code> and save.</li>
                     </ol>
 
                     <div className="pt-2 border-t border-white/5 flex flex-col gap-1.5">
                       <p className="text-[10px] font-bold text-emerald-400">
-                        ✨ Instant Alternative (No setup needed):
+                        ⚡ Or Use Instant Login (No domain setup required):
                       </p>
                       <p className="text-[10px] text-zinc-300">
-                        Use <strong>Email &amp; Password</strong> above (or click <strong>REGISTER</strong>) or click <strong>Launch Sandbox Demo Mode</strong> below!
+                        Sign in with <strong>Email &amp; Password</strong> above, or click <strong>Launch Sandbox Demo Mode</strong> below for instant full access!
                       </p>
                     </div>
                   </motion.div>
                 )}
 
-                {(error.toLowerCase().includes("popup") || error.toLowerCase().includes("blocked") || error.toLowerCase().includes("internal-error")) && (
+                {(isPopupBlocked || error?.toLowerCase().includes("popup") || error?.toLowerCase().includes("blocked")) && (
                   <motion.div
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
+                    className="space-y-2"
                   >
-                    <a 
-                      href={window.location.href} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-3.5 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2 text-xs uppercase tracking-widest shadow-lg shadow-blue-500/20 text-center cursor-pointer"
+                    <button 
+                      type="button"
+                      onClick={handleGoogleRedirectLogin}
+                      disabled={loading || isRedirecting}
+                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-3.5 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2 text-xs uppercase tracking-widest shadow-lg shadow-blue-500/20 text-center cursor-pointer disabled:opacity-50"
                     >
-                      <ExternalLink size={14} />
-                      Open App in New Tab to Login
-                    </a>
+                      {isRedirecting ? (
+                        <div className="flex items-center gap-2">
+                          <RefreshCw size={14} className="animate-spin" />
+                          <span>Redirecting to Google...</span>
+                        </div>
+                      ) : (
+                        <>
+                          <span>Sign In with Google (Redirect Mode)</span>
+                          <ArrowRight size={14} />
+                        </>
+                      )}
+                    </button>
+                    <p className="text-[10px] text-zinc-400 text-center">
+                      Redirect mode avoids browser popup blockers by navigating directly in this tab.
+                    </p>
                   </motion.div>
                 )}
               </div>
