@@ -2,12 +2,22 @@ import * as dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
-import { createServer as createViteServer } from "vite";
+import os from "os";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { generateVideo } from "./src/server/videoGenerator.ts";
 import { GoogleGenAI, Type } from "@google/genai";
+
+function getTempVideosDir(): string {
+  return process.env.VERCEL
+    ? path.join(os.tmpdir(), "temp_videos")
+    : path.join(process.cwd(), "temp_videos");
+}
+
+async function loadGenerateVideo() {
+  const mod = await import("./src/server/videoGenerator.ts");
+  return mod.generateVideo;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1733,7 +1743,7 @@ interface VideoJob {
 const activeVideoJobs = new Map<string, VideoJob>();
 
 // Cleanup routine for jobs older than 1 hour to prevent memory bloat
-setInterval(() => {
+const jobCleanupInterval = setInterval(() => {
   const oneHourAgo = Date.now() - (60 * 60 * 1000);
   for (const [jobId, job] of activeVideoJobs.entries()) {
     if (job.createdAt < oneHourAgo) {
@@ -1742,15 +1752,15 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000); // Check every 5 minutes
+jobCleanupInterval.unref?.();
 
-async function startServer() {
+export function createApp() {
   const app = express();
-  const PORT = 3000;
 
   app.use(express.json({ limit: '10mb' }));
 
   // Static videos
-  app.use("/videos", express.static(path.join(process.cwd(), "temp_videos")));
+  app.use("/videos", express.static(getTempVideosDir()));
 
   // API health check
   app.get("/api/health", (req, res) => {
@@ -1774,7 +1784,7 @@ async function startServer() {
       
       const fileExt = fileName.split(".").pop() || "mp4";
       const uniqueName = `feedback_upload_${Date.now()}_${Math.floor(Math.random() * 1000)}.${fileExt}`;
-      const saveDir = path.join(process.cwd(), "temp_videos");
+      const saveDir = getTempVideosDir();
       
       if (!fs.existsSync(saveDir)) {
         fs.mkdirSync(saveDir, { recursive: true });
@@ -1832,23 +1842,26 @@ async function startServer() {
     console.log(`[JOBS_ENGINE] Scheduled video generation job ${jobId}`);
 
     // Asynchronously generate video in the background
-    generateVideo(
-      limitedSegments, 
-      language, 
-      diagramUrl, 
-      teacherImageUrl, 
-      teacherName,
-      (step, progress) => {
-        const job = activeVideoJobs.get(jobId);
-        if (job) {
-          job.status = "processing";
-          job.step = step;
-          job.progress = progress;
-          activeVideoJobs.set(jobId, job);
-        }
-      },
-      isCinematicEnabled !== false
-    )
+    loadGenerateVideo()
+      .then((generateVideo) =>
+        generateVideo(
+          limitedSegments,
+          language,
+          diagramUrl,
+          teacherImageUrl,
+          teacherName,
+          (step, progress) => {
+            const job = activeVideoJobs.get(jobId);
+            if (job) {
+              job.status = "processing";
+              job.step = step;
+              job.progress = progress;
+              activeVideoJobs.set(jobId, job);
+            }
+          },
+          isCinematicEnabled !== false
+        )
+      )
     .then((videoId) => {
       console.log(`[JOBS_ENGINE] Job ${jobId} completed successfully with video ${videoId}`);
       const job = activeVideoJobs.get(jobId);
@@ -1905,23 +1918,26 @@ async function startServer() {
     console.log(`[JOBS_ENGINE] Scheduled lesson generation job ${jobId}`);
 
     // Asynchronously generate video in the background
-    generateVideo(
-      limitedSegments, 
-      language || 'en', 
-      diagramUrl, 
-      teacherImageUrl, 
-      teacherName,
-      (step, progress) => {
-        const job = activeVideoJobs.get(jobId);
-        if (job) {
-          job.status = "processing";
-          job.step = step;
-          job.progress = progress;
-          activeVideoJobs.set(jobId, job);
-        }
-      },
-      isCinematicEnabled !== false
-    )
+    loadGenerateVideo()
+      .then((generateVideo) =>
+        generateVideo(
+          limitedSegments,
+          language || 'en',
+          diagramUrl,
+          teacherImageUrl,
+          teacherName,
+          (step, progress) => {
+            const job = activeVideoJobs.get(jobId);
+            if (job) {
+              job.status = "processing";
+              job.step = step;
+              job.progress = progress;
+              activeVideoJobs.set(jobId, job);
+            }
+          },
+          isCinematicEnabled !== false
+        )
+      )
     .then((videoId) => {
       console.log(`[JOBS_ENGINE] Job ${jobId} completed successfully with video ${videoId}`);
       const job = activeVideoJobs.get(jobId);
@@ -8835,7 +8851,17 @@ Translate and output in the requested language: "${language || 'en'}".`
     });
   });
 
+  return app;
+}
+
+export const app = createApp();
+export default app;
+
+async function startServer() {
+  const PORT = 3000;
+
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -8852,24 +8878,28 @@ Translate and output in the requested language: "${language || 'en'}".`
   const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
     
-    // Generate placeholder video on start if not already present
-    const placeholderPath = path.join(process.cwd(), "temp_videos", "placeholder.mp4");
+    // Generate placeholder video on start if not already present (local only)
+    const tempDir = getTempVideosDir();
+    const placeholderPath = path.join(tempDir, "placeholder.mp4");
     if (!fs.existsSync(placeholderPath)) {
       console.log("[STARTUP] Generating local placeholder.mp4...");
-      generateVideo([
-        {
-          content: "Welcome to OmniTutor Academy. Design your syllabus to get started.",
-          speech: "Welcome to OmniTutor Academy. Design your syllabus to get started."
-        }
-      ], "en", null, null, null, undefined, false)
-      .then((videoId) => {
-        const srcPath = path.join(process.cwd(), "temp_videos", videoId);
-        fs.copyFileSync(srcPath, placeholderPath);
-        console.log("[STARTUP] Successfully generated and stored local placeholder.mp4");
-      })
-      .catch((err) => {
-        console.error("[STARTUP] Failed to generate placeholder.mp4:", err);
-      });
+      loadGenerateVideo()
+        .then((generateVideo) =>
+          generateVideo([
+            {
+              content: "Welcome to OmniTutor Academy. Design your syllabus to get started.",
+              speech: "Welcome to OmniTutor Academy. Design your syllabus to get started."
+            }
+          ], "en", null, null, null, undefined, false)
+        )
+        .then((videoId) => {
+          const srcPath = path.join(tempDir, videoId);
+          fs.copyFileSync(srcPath, placeholderPath);
+          console.log("[STARTUP] Successfully generated and stored local placeholder.mp4");
+        })
+        .catch((err) => {
+          console.error("[STARTUP] Failed to generate placeholder.mp4:", err);
+        });
     } else {
       console.log("[STARTUP] Local placeholder.mp4 already exists.");
     }
@@ -8880,4 +8910,22 @@ Translate and output in the requested language: "${language || 'en'}".`
   server.keepAliveTimeout = 65000;
 }
 
-startServer();
+const isDirectExecution = (() => {
+  if (process.env.VERCEL) return false;
+  const entryArg = process.argv[1];
+  if (!entryArg) return false;
+  try {
+    const resolvedEntry = path.resolve(entryArg);
+    const resolvedSelf = path.resolve(__filename);
+    return (
+      resolvedEntry === resolvedSelf ||
+      resolvedEntry.endsWith(`${path.sep}server.cjs`)
+    );
+  } catch {
+    return false;
+  }
+})();
+
+if (isDirectExecution) {
+  startServer();
+}
