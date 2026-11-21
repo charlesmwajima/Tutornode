@@ -62,8 +62,8 @@ export const OrientationGuide: React.FC<OrientationGuideProps> = ({
       iconBg: "bg-blue-500/10",
       iconColor: "text-blue-400",
       title: {
-        en: "Welcome to OmniTutor",
-        sw: "Karibu kwenye OmniTutor"
+        en: "Welcome to TutorNode",
+        sw: "Karibu kwenye TutorNode"
       },
       subtitle: {
         en: "Neural AI Academy & Virtual Classroom Portal",
@@ -138,8 +138,8 @@ export const OrientationGuide: React.FC<OrientationGuideProps> = ({
         sw: "Upimaji wa Uelewa unaotengenezwa na AI"
       },
       description: {
-        en: "Test your mental integration immediately after a lecture. OmniTutor reviews current whiteboard notes and designs an interactive, custom-targeted assessment.",
-        sw: "Pima uelewa wako mara baada ya muhadhara kumalizika. OmniTutor inapitia maelezo ya ubao na kukutengenezea mtihani maalum wa kujitathmini."
+        en: "Test your understanding immediately after a lecture. TutorNode reviews current whiteboard notes and designs an interactive, custom-targeted assessment.",
+        sw: "Pima uelewa wako mara baada ya muhadhara kumalizika. TutorNode inapitia maelezo ya ubao na kukutengenezea mtihani maalum wa kujitathmini."
       },
       points: {
         en: [

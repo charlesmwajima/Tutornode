@@ -1,26 +1,14 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default Deny
+    // Global default deny catch-all
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // --- Helper Functions ---
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function isAdmin() {
-      return isSignedIn() && request.auth.token.email == 'charlesmwajima@gmail.com';
-    }
-
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function incoming() {
@@ -31,90 +19,217 @@ service cloud.firestore {
       return resource.data;
     }
 
-    // --- Validation Blueprints ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
 
-    function isValidLesson(data) {
-      return data.keys().hasAll(['topic', 'whiteboard_notes', 'teacher_dialogue', 'timestamp', 'userId'])
-        && data.topic is string && data.topic.size() <= 1000
-        && data.whiteboard_notes is string && data.whiteboard_notes.size() <= 100000
-        && data.teacher_dialogue is string && data.teacher_dialogue.size() <= 100000
-        && data.userId == request.auth.uid;
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.email == 'charlesmwajima@gmail.com'
+        && request.auth.token.email_verified == true;
     }
 
     function isValidFeedback(data) {
-      return data.keys().hasAll(['topic', 'teacher_dialogue', 'quality_score', 'relevance_score', 'comments', 'timestamp', 'userId'])
-        && data.topic is string && data.topic.size() <= 1000
-        && data.teacher_dialogue is string && data.teacher_dialogue.size() <= 100000
-        && data.quality_score is number && data.quality_score >= 1 && data.quality_score <= 5
-        && data.relevance_score is number && data.relevance_score >= 1 && data.relevance_score <= 5
-        && data.comments is string && data.comments.size() <= 10000
-        && data.userId == request.auth.uid;
+      return data.keys().hasAll(['userId', 'topic', 'quality_score', 'relevance_score', 'timestamp'])
+        && data.keys().hasOnly(['userId', 'topic', 'teacher_dialogue', 'quality_score', 'relevance_score', 'comments', 'timestamp'])
+        && data.userId is string && data.userId == request.auth.uid
+        && data.topic is string && data.topic.size() > 0 && data.topic.size() <= 300
+        && (!('teacher_dialogue' in data) || (data.teacher_dialogue is string && data.teacher_dialogue.size() <= 20000))
+        && data.quality_score is int && data.quality_score >= 1 && data.quality_score <= 5
+        && data.relevance_score is int && data.relevance_score >= 1 && data.relevance_score <= 5
+        && (!('comments' in data) || (data.comments is string && data.comments.size() <= 2000))
+        && data.timestamp is timestamp && data.timestamp == request.time;
+    }
+
+    function isValidLesson(data) {
+      return data.keys().hasAll(['userId', 'topic', 'whiteboard_notes', 'teacher_dialogue', 'timestamp'])
+        && data.keys().hasOnly([
+          'userId', 'topic', 'subject', 'educationLevel', 'whiteboard_notes', 'teacher_dialogue',
+          'segments', 'structured_lesson', 'visual_diagram_prompt', 'diagram_svg_code',
+          'video_scene', 'video_keyword', 'is_exam_revision', 'timestamp'
+        ])
+        && data.userId is string && data.userId == request.auth.uid
+        && data.topic is string && data.topic.size() > 0 && data.topic.size() <= 300
+        && (!('subject' in data) || (data.subject is string && data.subject.size() <= 160))
+        && (!('educationLevel' in data) || (data.educationLevel is string && data.educationLevel.size() <= 80))
+        && data.whiteboard_notes is string && data.whiteboard_notes.size() <= 200000
+        && data.teacher_dialogue is string && data.teacher_dialogue.size() <= 150000
+        && (!('segments' in data) || (data.segments is list && data.segments.size() <= 40))
+        && (!('structured_lesson' in data) || data.structured_lesson is map)
+        && (!('visual_diagram_prompt' in data) || (data.visual_diagram_prompt is string && data.visual_diagram_prompt.size() <= 2000))
+        && (!('diagram_svg_code' in data) || (data.diagram_svg_code is string && data.diagram_svg_code.size() <= 200000))
+        && (!('video_scene' in data) || (data.video_scene is string && data.video_scene.size() <= 2000))
+        && (!('video_keyword' in data) || (data.video_keyword is string && data.video_keyword.size() <= 120))
+        && (!('is_exam_revision' in data) || data.is_exam_revision is bool)
+        && data.timestamp is timestamp && data.timestamp == request.time;
     }
 
     function isValidSyllabus(data) {
-      return data.keys().hasAll(['title', 'description', 'chapters', 'userId', 'createdAt'])
-        && data.title is string && data.title.size() <= 300
-        && data.description is string && data.description.size() <= 3000
-        && data.chapters is list
-        && data.userId == request.auth.uid;
+      return data.keys().hasAll(['userId', 'title', 'description', 'chapters', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'title', 'description', 'chapters', 'modules', 'isPublic', 'createdAt'])
+        && data.userId is string && data.userId == request.auth.uid
+        && data.title is string && data.title.size() > 0 && data.title.size() <= 200
+        && data.description is string && data.description.size() <= 1500
+        && data.chapters is list && data.chapters.size() <= 50
+        && (!('modules' in data) || (data.modules is list && data.modules.size() <= 20))
+        && (!('isPublic' in data) || data.isPublic is bool)
+        && ((data.createdAt is timestamp && data.createdAt == request.time) || (data.createdAt is string && data.createdAt.size() <= 64));
+    }
+
+    function isValidExam(data) {
+      return data.keys().hasAll(['userId', 'name', 'mimeType', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'name', 'mimeType', 'data', 'blobUrl', 'isShared', 'createdAt'])
+        && data.userId is string && data.userId == request.auth.uid
+        && data.name is string && data.name.size() > 0 && data.name.size() <= 255
+        && data.mimeType is string && data.mimeType.size() > 0 && data.mimeType.size() <= 100
+        && (!('data' in data) || (data.data is string && data.data.size() <= 850000))
+        && (!('blobUrl' in data) || (data.blobUrl is string && data.blobUrl.size() <= 1000))
+        && (!('isShared' in data) || data.isShared is bool)
+        && ((data.createdAt is timestamp && data.createdAt == request.time) || (data.createdAt is string && data.createdAt.size() <= 64));
+    }
+
+    function isValidQuizAttempt(data) {
+      return data.keys().hasAll(['userId', 'topic', 'score', 'total', 'percentage', 'answers', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'topic', 'studyLevel', 'score', 'total', 'percentage', 'answers', 'createdAt'])
+        && data.userId is string && data.userId == request.auth.uid
+        && data.topic is string && data.topic.size() > 0 && data.topic.size() <= 300
+        && (!('studyLevel' in data) || (data.studyLevel is string && data.studyLevel.size() <= 80))
+        && data.score is number && data.score >= 0
+        && data.total is int && data.total >= 1 && data.total <= 50
+        && data.percentage is number && data.percentage >= 0 && data.percentage <= 100
+        && data.answers is list && data.answers.size() <= 50
+        && data.createdAt is timestamp && data.createdAt == request.time;
+    }
+
+    function isValidDocumentRecord(data) {
+      return data.keys().hasAll(['userId', 'fileName', 'mimeType', 'action', 'analysis', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'fileName', 'mimeType', 'sizeBytes', 'blobUrl', 'action', 'analysis', 'createdAt'])
+        && data.userId is string && data.userId == request.auth.uid
+        && data.fileName is string && data.fileName.size() > 0 && data.fileName.size() <= 255
+        && data.mimeType is string && data.mimeType.size() > 0 && data.mimeType.size() <= 100
+        && (!('sizeBytes' in data) || (data.sizeBytes is int && data.sizeBytes >= 0 && data.sizeBytes <= 50000000))
+        && (!('blobUrl' in data) || (data.blobUrl is string && data.blobUrl.size() <= 1000))
+        && data.action is string && data.action.size() > 0 && data.action.size() <= 60
+        && data.analysis is map
+        && data.createdAt is timestamp && data.createdAt == request.time;
+    }
+
+    function isValidTutorThread(data) {
+      return data.keys().hasAll(['userId', 'topic', 'messages', 'updatedAt'])
+        && data.keys().hasOnly(['userId', 'topic', 'messages', 'updatedAt'])
+        && data.userId is string && data.userId == request.auth.uid
+        && data.topic is string && data.topic.size() > 0 && data.topic.size() <= 300
+        && data.messages is list && data.messages.size() <= 100
+        && data.updatedAt is timestamp && data.updatedAt == request.time;
+    }
+
+    function isValidVideoJob(data) {
+      return data.keys().hasAll(['userId', 'topic', 'mode', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['userId', 'topic', 'mode', 'status', 'blobUrl', 'storyboard', 'error', 'createdAt', 'updatedAt'])
+        && data.userId is string && data.userId == request.auth.uid
+        && data.topic is string && data.topic.size() > 0 && data.topic.size() <= 300
+        && data.mode in ['storyboard', 'webm', 'veo']
+        && data.status in ['queued', 'processing', 'completed', 'failed']
+        && (!('blobUrl' in data) || (data.blobUrl is string && data.blobUrl.size() <= 1000))
+        && (!('storyboard' in data) || data.storyboard is map)
+        && (!('error' in data) || (data.error is string && data.error.size() <= 500))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp && data.updatedAt == request.time;
     }
 
     function isValidAppSettings(data) {
       return data.keys().hasAll(['comingSoon', 'updatedAt'])
-        && data.comingSoon is bool;
-    }
-
-    function isValidExamPaper(data) {
-      return data.keys().hasAll(['name', 'mimeType', 'data', 'userId', 'createdAt'])
-        && data.name is string && data.name.size() <= 300
-        && data.mimeType is string && data.mimeType.size() <= 100
-        && data.data is string && data.data.size() <= 40000000
-        && data.userId == request.auth.uid;
-    }
-
-    // --- Collection Routes ---
-
-    match /test/connection {
-      allow read: if true;
-    }
-
-    match /syllabi/{syllabusId} {
-      allow get: if isValidId(syllabusId);
-      allow list: if isSignedIn();
-      allow create: if isSignedIn() && isValidSyllabus(incoming());
-      allow update: if false;
-      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-    }
-
-    match /lessons/{lessonId} {
-      allow get: if isValidId(lessonId) && (isOwner(existing().userId) || isAdmin());
-      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && isValidLesson(incoming());
-      allow update: if false;
-      allow delete: if isAdmin();
+        && data.keys().hasOnly(['comingSoon', 'updatedAt'])
+        && data.comingSoon is bool
+        && data.updatedAt is timestamp && data.updatedAt == request.time;
     }
 
     match /feedbacks/{feedbackId} {
-      allow get: if isValidId(feedbackId) && (isOwner(existing().userId) || isAdmin());
+      allow get: if isValidId(feedbackId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
       allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && isValidFeedback(incoming());
+      allow create: if isValidId(feedbackId) && isSignedIn() && isValidFeedback(incoming());
       allow update: if false;
-      allow delete: if isAdmin();
+      allow delete: if isValidId(feedbackId) && isAdmin();
     }
 
-    match /appSettings/{settingId} {
-      allow get: if isValidId(settingId);
-      allow list: if isSignedIn();
-      allow create, update: if isAdmin() && isValidAppSettings(incoming());
-      allow delete: if isAdmin();
+    match /lessons/{lessonId} {
+      allow get: if isValidId(lessonId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isValidId(lessonId) && isSignedIn() && isValidLesson(incoming());
+      allow update: if false;
+      allow delete: if isValidId(lessonId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    match /syllabi/{syllabusId} {
+      allow get: if isValidId(syllabusId) && isSignedIn() && (
+        existing().userId == request.auth.uid ||
+        ('isPublic' in existing() && existing().isPublic == true) ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isValidId(syllabusId) && isSignedIn() && isValidSyllabus(incoming());
+      allow update: if false;
+      allow delete: if isValidId(syllabusId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
     }
 
     match /exams/{examId} {
-      allow get: if isValidId(examId);
-      allow list: if isSignedIn();
-      allow create: if isSignedIn() && isValidExamPaper(incoming());
+      allow get: if isValidId(examId) && isSignedIn() && (
+        existing().userId == request.auth.uid ||
+        ('isShared' in existing() && existing().isShared == true) ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isValidId(examId) && isSignedIn() && isValidExam(incoming());
       allow update: if false;
-      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isValidId(examId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    match /quizAttempts/{attemptId} {
+      allow get: if isValidId(attemptId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isValidId(attemptId) && isSignedIn() && isValidQuizAttempt(incoming());
+      allow update: if false;
+      allow delete: if isValidId(attemptId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    match /documents/{docId} {
+      allow get: if isValidId(docId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isValidId(docId) && isSignedIn() && isValidDocumentRecord(incoming());
+      allow update: if false;
+      allow delete: if isValidId(docId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    match /tutorThreads/{threadId} {
+      allow get: if isValidId(threadId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isValidId(threadId) && isSignedIn() && isValidTutorThread(incoming());
+      allow update: if isValidId(threadId) && isSignedIn()
+        && existing().userId == request.auth.uid
+        && isValidTutorThread(incoming())
+        && incoming().userId == existing().userId
+        && incoming().diff(existing()).affectedKeys().hasOnly(['topic', 'messages', 'updatedAt']);
+      allow delete: if isValidId(threadId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    match /videoJobs/{jobId} {
+      allow get: if isValidId(jobId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isValidId(jobId) && isSignedIn() && isValidVideoJob(incoming()) && incoming().createdAt == request.time;
+      allow update: if isValidId(jobId) && isSignedIn()
+        && existing().userId == request.auth.uid
+        && isValidVideoJob(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'blobUrl', 'storyboard', 'error', 'updatedAt']);
+      allow delete: if isValidId(jobId) && isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    match /appSettings/{settingId} {
+      allow get: if isValidId(settingId) && isSignedIn();
+      allow list: if false;
+      allow create, update: if isValidId(settingId) && isAdmin() && isValidAppSettings(incoming());
+      allow delete: if isValidId(settingId) && isAdmin();
     }
   }
 }

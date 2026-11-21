@@ -1,94 +1,180 @@
 {
   "entities": {
     "Feedback": {
-      "title": "Lesson Feedback",
-      "description": "Student feedback on lesson quality and relevance",
+      "title": "Feedback",
+      "description": "Student lesson quality evaluation and improvement feedback",
       "type": "object",
       "properties": {
-        "topic": { "type": "string", "description": "The topic of the lesson" },
-        "teacher_dialogue": { "type": "string", "description": "What the teacher said" },
-        "quality_score": { "type": "number", "description": "Score for teaching quality (1-5)" },
-        "relevance_score": { "type": "number", "description": "Score for relevance (1-5)" },
-        "comments": { "type": "string", "description": "Additional student comments" },
-        "timestamp": { "type": "string", "format": "date-time", "description": "When the feedback was submitted" },
-        "userId": { "type": "string", "description": "ID of the student (if authenticated)" }
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "topic": { "type": "string", "maxLength": 300 },
+        "teacher_dialogue": { "type": "string", "maxLength": 20000 },
+        "quality_score": { "type": "integer" },
+        "relevance_score": { "type": "integer" },
+        "comments": { "type": "string", "maxLength": 2000 },
+        "timestamp": { "type": "string", "format": "date-time" }
       },
-      "required": ["topic", "quality_score", "relevance_score", "timestamp"]
+      "required": ["userId", "topic", "quality_score", "relevance_score", "timestamp"]
     },
     "Lesson": {
-      "title": "Lesson History",
-      "description": "Record of a generated lesson topic and content",
+      "title": "Lesson",
+      "description": "Saved TutorNode lesson session with structured notes, segments, and diagrams",
       "type": "object",
       "properties": {
-        "topic": { "type": "string" },
-        "timestamp": { "type": "string", "format": "date-time" },
-        "whiteboard_notes": { "type": "string" },
-        "teacher_dialogue": { "type": "string" },
-        "userId": { "type": "string", "description": "Owner of the lesson" }
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "topic": { "type": "string", "maxLength": 300 },
+        "subject": { "type": "string", "maxLength": 160 },
+        "educationLevel": { "type": "string", "maxLength": 80 },
+        "whiteboard_notes": { "type": "string", "maxLength": 200000 },
+        "teacher_dialogue": { "type": "string", "maxLength": 150000 },
+        "segments": { "type": "array" },
+        "structured_lesson": { "type": "object" },
+        "visual_diagram_prompt": { "type": "string", "maxLength": 2000 },
+        "diagram_svg_code": { "type": "string", "maxLength": 200000 },
+        "video_scene": { "type": "string", "maxLength": 2000 },
+        "video_keyword": { "type": "string", "maxLength": 120 },
+        "is_exam_revision": { "type": "boolean" },
+        "timestamp": { "type": "string", "format": "date-time" }
       },
-      "required": ["topic", "timestamp", "userId"]
+      "required": ["userId", "topic", "whiteboard_notes", "teacher_dialogue", "timestamp"]
     },
     "Syllabus": {
-      "title": "Syllabus Plan",
-      "description": "A structured academic syllabus detailing chapters and topics for automated course navigation",
+      "title": "Syllabus",
+      "description": "User coursework syllabus and topic progression",
       "type": "object",
       "properties": {
-        "title": { "type": "string", "description": "Title of the syllabus" },
-        "description": { "type": "string", "description": "General description or subject overview" },
-        "userId": { "type": "string", "description": "ID of the creator (if authenticated)" },
-        "createdAt": { "type": "string", "format": "date-time", "description": "When the syllabus was created" },
-        "chapters": {
-          "type": "array",
-          "description": "List of chapters within the syllabus structure"
-        }
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 1500 },
+        "chapters": { "type": "array" },
+        "modules": { "type": "array" },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["title", "description", "chapters"]
-    },
-    "AppSettings": {
-      "title": "Application Settings",
-      "description": "Global application configuration settings managed by Administrators",
-      "type": "object",
-      "properties": {
-        "comingSoon": { "type": "boolean", "description": "Whether the feature is currently in under-development 'coming soon' state" },
-        "updatedAt": { "type": "string", "format": "date-time" },
-        "updatedBy": { "type": "string" }
-      },
-      "required": ["comingSoon", "updatedAt"]
+      "required": ["userId", "title", "description", "chapters", "createdAt"]
     },
     "ExamPaper": {
-      "title": "Exam Paper",
-      "description": "An uploaded exam paper for teacher revision and solving",
+      "title": "ExamPaper",
+      "description": "Uploaded or shared examination paper metadata or compact file payload",
       "type": "object",
       "properties": {
-        "name": { "type": "string", "description": "The name of the exam paper file" },
-        "mimeType": { "type": "string", "description": "The mime type of the file" },
-        "data": { "type": "string", "description": "The base64 encoded file content" },
-        "userId": { "type": "string", "description": "ID of the student who uploaded/shared the exam paper" },
-        "createdAt": { "type": "string", "format": "date-time", "description": "When the exam paper was uploaded" }
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "maxLength": 255 },
+        "mimeType": { "type": "string", "maxLength": 100 },
+        "data": { "type": "string", "maxLength": 850000 },
+        "blobUrl": { "type": "string", "maxLength": 1000 },
+        "isShared": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name", "mimeType", "data", "userId", "createdAt"]
+      "required": ["userId", "name", "mimeType", "createdAt"]
+    },
+    "QuizAttempt": {
+      "title": "QuizAttempt",
+      "description": "Completed interactive quiz attempt with score and answer review",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "topic": { "type": "string", "maxLength": 300 },
+        "studyLevel": { "type": "string", "maxLength": 80 },
+        "score": { "type": "number" },
+        "total": { "type": "integer" },
+        "percentage": { "type": "number" },
+        "answers": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "topic", "score", "total", "percentage", "answers", "createdAt"]
+    },
+    "DocumentRecord": {
+      "title": "DocumentRecord",
+      "description": "Analyzed study document metadata and AI analysis output",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "fileName": { "type": "string", "maxLength": 255 },
+        "mimeType": { "type": "string", "maxLength": 100 },
+        "sizeBytes": { "type": "integer" },
+        "blobUrl": { "type": "string", "maxLength": 1000 },
+        "action": { "type": "string", "maxLength": 60 },
+        "analysis": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "fileName", "mimeType", "action", "analysis", "createdAt"]
+    },
+    "TutorThread": {
+      "title": "TutorThread",
+      "description": "Persistent Q&A dialogue thread between student and AI tutor",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "topic": { "type": "string", "maxLength": 300 },
+        "messages": { "type": "array" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "topic", "messages", "updatedAt"]
+    },
+    "VideoJob": {
+      "title": "VideoJob",
+      "description": "Persistent serverless storyboard or video export tracking record",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "topic": { "type": "string", "maxLength": 300 },
+        "mode": { "type": "string", "enum": ["storyboard", "webm", "veo"] },
+        "status": { "type": "string", "enum": ["queued", "processing", "completed", "failed"] },
+        "blobUrl": { "type": "string", "maxLength": 1000 },
+        "storyboard": { "type": "object" },
+        "error": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "topic", "mode", "status", "createdAt", "updatedAt"]
+    },
+    "AppSettings": {
+      "title": "AppSettings",
+      "description": "Global TutorNode feature availability configuration",
+      "type": "object",
+      "properties": {
+        "comingSoon": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["comingSoon", "updatedAt"]
     }
   },
   "firestore": {
-    "feedbacks/{feedbackId}": {
-      "schema": "Feedback",
-      "description": "Collection of student feedbacks"
+    "/feedbacks/{feedbackId}": {
+      "schema": { "$ref": "#/entities/Feedback" },
+      "description": "Student lesson feedback records"
     },
-    "lessons/{lessonId}": {
-      "schema": "Lesson",
-      "description": "Collection of past lessons"
+    "/lessons/{lessonId}": {
+      "schema": { "$ref": "#/entities/Lesson" },
+      "description": "User saved lessons and exam revision archives"
     },
-    "syllabi/{syllabusId}": {
-      "schema": "Syllabus",
-      "description": "Collection of shared student/instructor syllabi"
+    "/syllabi/{syllabusId}": {
+      "schema": { "$ref": "#/entities/Syllabus" },
+      "description": "User coursework syllabi"
     },
-    "appSettings/{settingId}": {
-      "schema": "AppSettings",
-      "description": "Global system-wide setting overrides"
+    "/exams/{examId}": {
+      "schema": { "$ref": "#/entities/ExamPaper" },
+      "description": "User uploaded or explicitly shared exam papers"
     },
-    "exams/{examId}": {
-      "schema": "ExamPaper",
-      "description": "Collection of shared exam papers"
+    "/quizAttempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/QuizAttempt" },
+      "description": "User quiz attempt scores and answer reviews"
+    },
+    "/documents/{docId}": {
+      "schema": { "$ref": "#/entities/DocumentRecord" },
+      "description": "Analyzed study documents and extracted notes"
+    },
+    "/tutorThreads/{threadId}": {
+      "schema": { "$ref": "#/entities/TutorThread" },
+      "description": "Persistent Q&A tutor conversations per user"
+    },
+    "/videoJobs/{jobId}": {
+      "schema": { "$ref": "#/entities/VideoJob" },
+      "description": "Persistent storyboard/video export tracking records"
+    },
+    "/appSettings/{settingId}": {
+      "schema": { "$ref": "#/entities/AppSettings" },
+      "description": "Global platform configuration flags"
     }
   }
 }
