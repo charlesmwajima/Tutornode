@@ -1,9 +1,6 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { motion } from 'motion/react';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db, getAuthHeaders, handleFirestoreError, OperationType } from '../lib/firebase';
-import { RotateCcw, Send, X, MessageSquare, Check } from 'lucide-react';
 
 export interface Message {
   role: 'user' | 'assistant';
@@ -13,7 +10,7 @@ export interface Message {
 interface QASectionProps {
   currentTopic: string;
   currentSegment: { content: string; speech: string } | null;
-  language: 'en' | 'sw';
+  language: "en" | "sw";
   onClose: () => void;
   initialQuestion?: string;
   onAssistantSpeak?: (text: string, onEnd?: () => void) => void;
@@ -28,18 +25,9 @@ interface QASectionProps {
   isLessonEnded?: boolean;
 }
 
-function buildThreadDocId(uid: string, topic: string): string {
-  const safeSlug = (topic || 'general')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 64) || 'general';
-  return `${uid.slice(0, 48)}_${safeSlug}`;
-}
-
-export const QASection: React.FC<QASectionProps> = ({
-  currentTopic,
-  currentSegment,
+export const QASection: React.FC<QASectionProps> = ({ 
+  currentTopic, 
+  currentSegment, 
   language,
   onClose,
   initialQuestion,
@@ -52,349 +40,335 @@ export const QASection: React.FC<QASectionProps> = ({
   initialMessages,
   isWaitingForContinue = false,
   onWaitingForContinueChange,
-  isLessonEnded = false,
+  isLessonEnded = false
 }) => {
   const [messages, setMessages] = useState<Message[]>(initialMessages || []);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [lastError, setLastError] = useState<{ message: string; failedQuestion: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastProcessedQuestion = useRef<string | null>(null);
-
-  const threadDocId = auth.currentUser ? buildThreadDocId(auth.currentUser.uid, currentTopic) : null;
-
-  // Load persisted tutor thread when opening a topic
-  useEffect(() => {
-    let active = true;
-    const loadThread = async () => {
-      if (!auth.currentUser || !threadDocId || (initialMessages && initialMessages.length > 0)) return;
-      try {
-        const snap = await getDoc(doc(db, 'tutorThreads', threadDocId));
-        if (active && snap.exists()) {
-          const data = snap.data();
-          if (Array.isArray(data.messages)) {
-            setMessages(data.messages.slice(-50));
-          }
-        }
-      } catch (err) {
-        handleFirestoreError(err, OperationType.GET, `tutorThreads/${threadDocId}`);
-      }
-    };
-    loadThread();
-    return () => {
-      active = false;
-    };
-  }, [threadDocId, initialMessages]);
-
-  const persistThread = useCallback(
-    async (updatedMessages: Message[]) => {
-      if (!auth.currentUser || !threadDocId) return;
-      try {
-        await setDoc(doc(db, 'tutorThreads', threadDocId), {
-          userId: auth.currentUser.uid,
-          topic: (currentTopic || 'General Study').slice(0, 300),
-          messages: updatedMessages.slice(-50),
-          updatedAt: serverTimestamp(),
-        });
-      } catch (err) {
-        handleFirestoreError(err, OperationType.WRITE, `tutorThreads/${threadDocId}`);
-      }
-    },
-    [currentTopic, threadDocId]
-  );
-
-  const processQuestion = useCallback(
-    async (userMessage: string, isRetry = false) => {
-      const trimmed = userMessage.trim();
-      if (!trimmed || isLoading) return;
-
-      if (isWaitingForContinue) {
-        const lower = trimmed.toLowerCase();
-        if (
-          lower === 'yes' ||
-          lower === 'y' ||
-          lower.includes('continue') ||
-          lower.includes('ndio') ||
-          lower.includes('ndiyo') ||
-          lower.includes('endelea')
-        ) {
-          onClose();
-          return;
-        }
-        onWaitingForContinueChange?.(false);
-      }
-
-      if (!auth.currentUser) {
-        setLastError({
-          message:
-            language === 'sw'
-              ? 'Tafadhali ingia kwenye akaunti yako ili kuzungumza na Mwalimu AI.'
-              : 'Please sign in to chat with your TutorNode AI instructor.',
-          failedQuestion: trimmed,
-        });
-        return;
-      }
-
-      setLastError(null);
-      onQuestionAsked?.();
-
-      const historySnapshot = messages;
-      const nextMessages: Message[] = isRetry
-        ? messages
-        : [...messages, { role: 'user', content: trimmed }];
-
-      if (!isRetry) {
-        setMessages(nextMessages);
-      }
-      setIsLoading(true);
-
-      try {
-        const headers = await getAuthHeaders();
-        const res = await fetch('/api/qa-lesson', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            currentTopic,
-            currentSegment,
-            language,
-            messages: historySnapshot,
-            userMessage: trimmed,
-            intelLevel,
-            studyLevel,
-            teachingTechniqueId,
-          }),
-        });
-
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(payload.error || `Tutor service returned status ${res.status}`);
-        }
-
-        const answer = payload.text?.trim();
-        if (!answer) {
-          throw new Error('Empty response received from tutor service.');
-        }
-
-        const withAnswer: Message[] = [...nextMessages, { role: 'assistant', content: answer }];
-        setMessages(withAnswer);
-        persistThread(withAnswer);
-
-        const continuePrompt = isLessonEnded
-          ? language === 'sw'
-            ? 'Je, nimejibu swali lako?'
-            : 'Have I answered your question?'
-          : language === 'sw'
-          ? 'Je, tuendelee na somo?'
-          : 'Should we continue with the lesson?';
-
-        if (onAssistantSpeak) {
-          onAssistantSpeak(answer, () => {
-            onWaitingForContinueChange?.(true);
-            onAnswerFinished?.();
-            onAssistantSpeak(continuePrompt);
-          });
-        } else {
-          onWaitingForContinueChange?.(true);
-          onAnswerFinished?.();
-        }
-      } catch (err: unknown) {
-        const msg =
-          (err as { message?: string })?.message ||
-          'Unable to reach AI tutor service. Please retry.';
-        setLastError({ message: msg, failedQuestion: trimmed });
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [
-      currentSegment,
-      currentTopic,
-      intelLevel,
-      isLessonEnded,
-      isLoading,
-      isWaitingForContinue,
-      language,
-      messages,
-      onAnswerFinished,
-      onAssistantSpeak,
-      onClose,
-      onQuestionAsked,
-      onWaitingForContinueChange,
-      persistThread,
-      studyLevel,
-      teachingTechniqueId,
-    ]
-  );
 
   useEffect(() => {
     if (initialQuestion && initialQuestion !== lastProcessedQuestion.current) {
       lastProcessedQuestion.current = initialQuestion;
       processQuestion(initialQuestion);
     }
-  }, [initialQuestion, processQuestion]);
+  }, [initialQuestion]);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isLoading, lastError]);
+  }, [messages, isLoading]);
 
-  const handleSend = (e: React.FormEvent) => {
-    e.preventDefault();
+  const processQuestion = async (userMessage: string) => {
+    if (!userMessage.trim() || isLoading) return;
+
+    if (isWaitingForContinue) {
+      const lower = userMessage.toLowerCase().trim();
+      if (
+        lower === 'yes' || 
+        lower === 'y' || 
+        lower.includes('continue') || 
+        lower.includes('ndio') || 
+        lower.includes('ndiyo') || 
+        lower.includes('endelea') ||
+        lower.includes('yes, continue') ||
+        lower.includes('yes.')
+      ) {
+        onClose();
+        return;
+      } else {
+        if (onWaitingForContinueChange) {
+          onWaitingForContinueChange(false);
+        }
+      }
+    }
+
+    if (onQuestionAsked) onQuestionAsked();
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setIsLoading(true);
+
+    try {
+      const res = await fetch("/api/qa-lesson", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentTopic,
+          currentSegment,
+          language,
+          messages,
+          userMessage,
+          intelLevel,
+          studyLevel,
+          teachingTechniqueId
+        })
+      });
+
+      if (!res.ok) {
+        const errPayload = await res.json().catch(() => ({}));
+        throw new Error(errPayload.error || `Server returned status ${res.status}`);
+      }
+
+      const resJson = await res.json();
+      const answer = resJson.text || "I am currently processing your inquiry. Please re-state your question.";
+      setMessages(prev => [...prev, { role: 'assistant', content: answer }]);
+      
+      // Request Mwalimu to speak the answer
+      if (onAssistantSpeak) {
+        onAssistantSpeak(answer, () => {
+          // Speak the continuation prompt after the main answer is read
+          const continuePrompt = isLessonEnded
+            ? (language === 'sw' ? "Je, nimejibu swali lako?" : "Have I answered your question?")
+            : (language === 'sw' ? "Je, tuendelee na somo?" : "Should we continue with the lesson?");
+          
+          setMessages(prev => [...prev, { role: 'assistant', content: continuePrompt }]);
+          
+          onAssistantSpeak(continuePrompt, () => {
+            if (onWaitingForContinueChange) {
+              onWaitingForContinueChange(true);
+            }
+            if (onAnswerFinished) onAnswerFinished();
+          });
+        });
+      } else {
+        const continuePrompt = isLessonEnded
+          ? (language === 'sw' ? "Je, nimejibu swali lako?" : "Have I answered your question?")
+          : (language === 'sw' ? "Je, tuendelee na somo?" : "Should we continue with the lesson?");
+        setMessages(prev => [...prev, { role: 'assistant', content: continuePrompt }]);
+        if (onWaitingForContinueChange) {
+          onWaitingForContinueChange(true);
+        }
+        if (onAnswerFinished) onAnswerFinished();
+      }
+    } catch (error: any) {
+      console.error("QA Error:", error);
+      const errorText = error?.message || (typeof error === 'string' ? error : JSON.stringify(error));
+      const isRateLimit = errorText.includes('429') || errorText.includes('RESOURCE_EXHAUSTED');
+      const errorMessage = isRateLimit 
+        ? "Academy Neural Link is saturated (Quota Exceeded). If you are using the free tier, please wait a moment or add a billing-enabled API key in Settings > Secrets to increase capacity."
+        : "Neural link timeout or connection error. Please check your network and try again.";
+        
+      setMessages(prev => [...prev, { role: 'assistant', content: errorMessage }]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSend = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     const userMessage = input.trim();
-    if (!userMessage) return;
     setInput('');
     processQuestion(userMessage);
   };
 
   return (
-    <motion.div
+    <motion.div 
       initial={{ x: '100%' }}
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
       transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-      className="fixed md:absolute inset-y-0 right-0 w-full md:w-[440px] bg-slate-900 border-l border-white/10 z-[100] flex flex-col shadow-2xl"
+      className="absolute inset-y-0 right-0 w-full md:w-[450px] bg-[#1a2f23] border-l-8 border-[#4a3728] z-[100] flex flex-col shadow-[-20px_0_50px_rgba(0,0,0,0.5)]"
     >
-      <div className="p-4 sm:p-5 border-b border-white/10 flex items-center justify-between bg-slate-950/70">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
-            <MessageSquare size={17} className="text-emerald-400" />
+      {/* Chalkboard Texture */}
+      <div className="absolute inset-0 pointer-events-none opacity-10 bg-[url('https://www.transparenttextures.com/patterns/chalkboard.png')]"></div>
+      
+      {/* Header */}
+      <div className="p-6 border-b border-white/10 flex items-center justify-between bg-[#14231b] relative z-10">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center shadow-inner">
+            <i className="fas fa-hand-paper text-emerald-400 text-sm"></i>
           </div>
-          <div className="min-w-0">
-            <h3 className="text-sm font-bold text-white truncate">
-              {language === 'sw' ? 'Mazungumzo na Mwalimu' : 'AI Tutor Dialogue'}
-            </h3>
-            <p className="text-[11px] text-slate-400 truncate">
-              {currentTopic || 'Active Topic'}
-            </p>
+          <div>
+            <h3 className="text-sm font-bold text-white uppercase tracking-[0.3em] font-serif italic">Student Dialogue</h3>
+            <div className="flex items-center gap-2">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
+              <p className="text-[9px] text-white/40 font-mono tracking-widest uppercase">Active Inquiry System</p>
+            </div>
           </div>
         </div>
-        <button
-          type="button"
+        <button 
           onClick={onClose}
-          aria-label="Close Tutor Dialogue"
-          className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
+          className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all hover:rotate-90 border border-white/10"
         >
-          <X size={16} />
+          <i className="fas fa-times text-white/40"></i>
         </button>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-5 custom-scrollbar">
-        {messages.length === 0 && !isLoading && (
-          <div className="h-full flex flex-col items-center justify-center text-center py-10 px-6">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-4">
-              <MessageSquare size={24} className="text-emerald-400/70" />
-            </div>
-            <p className="text-sm font-semibold text-white mb-1.5">
-              {language === 'sw' ? 'Uliza Swali Lolote' : 'Ask Mwalimu Bora'}
-            </p>
-            <p className="text-xs text-slate-400 leading-relaxed max-w-xs">
-              {language === 'sw'
-                ? 'Omba ufafanuzi, vidokezo vya hatua kwa hatua, au mifano ya ziada kuhusu somo hili.'
-                : 'Request step-by-step explanations, progressive exam hints, worked examples, or clarification on any concept.'}
+      {/* Messages */}
+      <div 
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar relative z-10"
+      >
+        {messages.length === 0 && (
+          <div className="h-full flex flex-col items-center justify-center text-center py-12 px-8">
+             <div className="w-20 h-20 rounded-full bg-emerald-900/20 border-2 border-emerald-500/10 flex items-center justify-center mb-6">
+               <i className="fas fa-graduation-cap text-3xl text-emerald-500/20"></i>
+             </div>
+            <p className="text-xs font-black text-emerald-400/50 uppercase tracking-[0.4em] mb-4">Classroom Discussion</p>
+            <p className="text-[11px] font-serif italic text-white/30 leading-relaxed">
+              "The beautiful thing about learning is that no one can take it away from you."
+              <br/>
+              <span className="mt-2 block not-italic font-mono text-[8px] opacity-40">— B.B. King</span>
             </p>
           </div>
         )}
 
         {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div
-              className={`max-w-[90%] p-4 rounded-2xl text-sm ${
-                m.role === 'user'
-                  ? 'bg-blue-600/20 border border-blue-500/30 text-slate-100 rounded-br-sm'
-                  : 'bg-slate-800/80 border border-white/10 text-slate-100 rounded-bl-sm'
-              }`}
-            >
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                {m.role === 'user' ? 'Student' : 'Mwalimu Bora'}
+          <motion.div 
+            key={i}
+            initial={{ opacity: 0, x: m.role === 'user' ? 20 : -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
+          >
+            <div className={`max-w-[90%] p-5 rounded-3x relative ${
+              m.role === 'user' 
+                ? 'bg-emerald-600/20 border border-emerald-500/30 text-emerald-50 rounded-br-none' 
+                : 'bg-white/5 border border-white/10 text-white/90 rounded-bl-none shadow-xl'
+            }`}>
+              <div className={`absolute top-0 ${m.role === 'user' ? 'right-0' : 'left-0'} -translate-y-full mb-1`}>
+                <span className="text-[8px] font-black uppercase tracking-widest opacity-30">
+                  {m.role === 'user' ? 'Student' : 'Mwalimu Bora'}
+                </span>
               </div>
-              <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
+              <div className={`markdown-body ${m.role === 'assistant' ? 'chalk-text font-serif text-lg leading-relaxed' : 'font-sans'}`}>
                 <Markdown>{m.content}</Markdown>
               </div>
             </div>
-          </div>
+          </motion.div>
         ))}
 
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-slate-800/80 border border-white/10 px-4 py-3 rounded-2xl text-xs text-slate-300 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>{language === 'sw' ? 'Mwalimu anafikiri...' : 'Mwalimu is preparing a response...'}</span>
+            <div className="bg-white/5 p-4 rounded-2xl rounded-bl-none border border-white/10 flex gap-2">
+              {[0, 1, 2].map((dot) => (
+                <motion.div 
+                  key={dot}
+                  animate={{ y: [0, -5, 0], opacity: [0.3, 1, 0.3] }} 
+                  transition={{ repeat: Infinity, duration: 1, delay: dot * 0.2 }} 
+                  className="w-1.5 h-1.5 bg-emerald-500 rounded-full"
+                ></motion.div>
+              ))}
             </div>
-          </div>
-        )}
-
-        {lastError && (
-          <div className="bg-red-950/50 border border-red-500/30 rounded-2xl p-4 space-y-2.5 text-xs text-red-200">
-            <p className="leading-relaxed">{lastError.message}</p>
-            <button
-              type="button"
-              onClick={() => processQuestion(lastError.failedQuestion, true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-semibold"
-            >
-              <RotateCcw size={12} />
-              <span>{language === 'sw' ? 'Jaribu Tena' : 'Retry'}</span>
-            </button>
           </div>
         )}
       </div>
 
       {isWaitingForContinue && (
-        <div className="mx-4 mb-2 p-3 rounded-xl bg-emerald-950/50 border border-emerald-500/30 flex flex-col gap-2">
-          <p className="text-xs font-semibold text-emerald-200 text-center">
-            {isLessonEnded
-              ? language === 'sw'
-                ? 'Je, nimejibu swali lako?'
-                : 'Have I answered your question?'
-              : language === 'sw'
-              ? 'Je, tuendelee na somo?'
-              : 'Ready to continue the lesson?'}
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-6 p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/20 flex flex-col gap-2 relative z-10 mb-2"
+        >
+          <p className="text-[10px] uppercase font-black tracking-widest text-[#dfca9c] text-center">
+            {isLessonEnded 
+              ? (language === 'sw' ? "Je, nimejibu swali lako?" : "Have I answered your question?")
+              : (language === 'sw' ? "Je, tuendelee na somo?" : "Should we continue with the lesson?")
+            }
           </p>
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                onWaitingForContinueChange?.(false);
-                if (!isLessonEnded) onClose();
-              }}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-3 rounded-lg text-xs flex items-center justify-center gap-1"
-            >
-              <Check size={13} />
-              {isLessonEnded ? (language === 'sw' ? 'Ndiyo' : 'Yes') : language === 'sw' ? 'Endelea' : 'Resume Lesson'}
-            </button>
-            <button
-              type="button"
-              onClick={() => onWaitingForContinueChange?.(false)}
-              className="flex-1 bg-white/10 hover:bg-white/15 text-slate-200 py-2 px-3 rounded-lg text-xs"
-            >
-              {language === 'sw' ? 'Uliza Zaidi' : 'Ask More'}
-            </button>
+            {isLessonEnded ? (
+              <>
+                <button
+                  onClick={() => {
+                    if (onWaitingForContinueChange) {
+                      onWaitingForContinueChange(false);
+                    }
+                    const gladMsg = language === 'sw' ? "Ninafurahi!" : "I am glad!";
+                    setMessages(prev => [...prev, { role: 'assistant', content: gladMsg }]);
+                    if (onAssistantSpeak) {
+                      onAssistantSpeak(gladMsg);
+                    }
+                  }}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-3 rounded-lg text-xs transition-all shadow-md active:scale-95 flex items-center justify-center gap-1 border border-emerald-400/30"
+                  type="button"
+                >
+                  <i className="fas fa-check text-[9px]"></i>
+                  {language === 'sw' ? "Ndiyo" : "Yes"}
+                </button>
+                <button
+                  onClick={() => {
+                    if (onWaitingForContinueChange) {
+                      onWaitingForContinueChange(false);
+                    }
+                    const clarifyMsg = language === 'sw' 
+                      ? "Tafadhali unaweza kuniambia ni nini hasa ungependa nikufafanulie?" 
+                      : "Could you please tell me what exactly you want me to clarify?";
+                    setMessages(prev => [...prev, { role: 'assistant', content: clarifyMsg }]);
+                    if (onAssistantSpeak) {
+                      onAssistantSpeak(clarifyMsg);
+                    }
+                  }}
+                  className="flex-1 bg-white/5 hover:bg-white/10 text-white/80 py-2 px-3 rounded-lg text-xs transition-all border border-white/10 active:scale-95 text-center"
+                  type="button"
+                >
+                  {language === 'sw' ? "Hapana" : "No"}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => onClose()}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 px-3 rounded-lg text-xs transition-all shadow-md active:scale-95 flex items-center justify-center gap-1 border border-emerald-400/30"
+                  type="button"
+                >
+                  <i className="fas fa-check text-[9px]"></i>
+                  {language === 'sw' ? "Ndiyo, Endelea" : "Yes, Continue"}
+                </button>
+                <button
+                  onClick={() => {
+                    if (onWaitingForContinueChange) {
+                      onWaitingForContinueChange(false);
+                    }
+                    if (onAssistantSpeak) {
+                      onAssistantSpeak(language === 'sw' ? "Sawa, unaweza kuuliza swali lingine." : "Alright, what other question do you have?");
+                    }
+                  }}
+                  className="flex-1 bg-white/5 hover:bg-white/10 text-white/80 py-2 px-3 rounded-lg text-xs transition-all border border-white/10 active:scale-95 text-center"
+                  type="button"
+                >
+                  {language === 'sw' ? "Hapana, Uliza zaidi" : "No, Ask More"}
+                </button>
+              </>
+            )}
           </div>
-        </div>
+        </motion.div>
       )}
 
-      <div className="p-4 bg-slate-950/80 border-t border-white/10">
-        <form
-          onSubmit={handleSend}
-          className="flex items-center gap-2 bg-slate-900 border border-white/10 focus-within:border-emerald-500 rounded-2xl px-3 py-1.5"
-        >
-          <input
+      {/* Input */}
+      <div className="p-6 bg-[#101c15] border-t border-white/5 relative z-10 shadow-[0_-10px_30px_rgba(0,0,0,0.4)]">
+        <form onSubmit={handleSend} className="relative flex items-center justify-between w-full h-[58px] bg-zinc-950/80 hover:bg-zinc-950/95 border border-emerald-950 focus-within:border-emerald-700/60 rounded-full px-4 gap-2 transition-all shadow-inner">
+          <input 
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={language === 'sw' ? 'Uliza swali lako hapa...' : 'Ask your question or attempt an exam step...'}
-            className="flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none py-2 px-1 min-w-0"
+            placeholder={language === 'sw' ? "Uliza swali lako hapa..." : "Ask your question here..."}
+            className="flex-1 bg-transparent border-none text-white placeholder:text-zinc-400 caret-white text-sm focus:outline-none focus:ring-0 px-2 h-full py-2 min-w-0 font-sans"
             disabled={isLoading}
           />
-          <button
+          <button 
             type="submit"
             disabled={!input.trim() || isLoading}
-            aria-label="Send message"
-            className="w-9 h-9 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl flex items-center justify-center shrink-0 transition-colors"
+            className="w-10 h-10 bg-emerald-500 hover:bg-emerald-400 disabled:bg-zinc-800 disabled:opacity-40 text-zinc-950 disabled:text-zinc-500 rounded-full flex items-center justify-center transition-all active:scale-95 shadow-md shrink-0"
+            title="Send Question"
           >
-            <Send size={15} />
+            {isLoading ? (
+              <i className="fas fa-circle-notch fa-spin text-sm"></i>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="19" x2="12" y2="5"></line>
+                <polyline points="5 12 12 5 19 12"></polyline>
+              </svg>
+            )}
           </button>
         </form>
+        <div className="mt-4 flex items-center justify-between px-2">
+           <span className="text-[8px] font-mono text-white/20 uppercase tracking-[0.2em]">Lesson Context Synchronized</span>
+           <div className="flex gap-1">
+              <div className="w-8 h-1 bg-white/5 rounded-full"></div>
+              <div className="w-12 h-1 bg-emerald-500/20 rounded-full"></div>
+           </div>
+        </div>
       </div>
     </motion.div>
   );

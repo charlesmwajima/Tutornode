@@ -20,10 +20,10 @@ interface TourStep {
 const TOUR_STEPS: TourStep[] = [
   {
     icon: 'fa-brain',
-    titleEn: 'Welcome to TutorNode',
-    titleSw: 'Karibu TutorNode',
-    descriptionEn: 'Step into your AI classroom! TutorNode is an interactive virtual learning environment led by Mwalimu Bora, a bilingual AI instructor designed to teach concepts step by step.',
-    descriptionSw: 'Ingia kwenye darasa lako la AI! TutorNode ni mazingira ya masomo yanayoongozwa na Mwalimu Bora, mwalimu mahiri wa AI anayefundisha hatua kwa hatua.',
+    titleEn: 'Welcome to OmniTutor',
+    titleSw: 'Karibu OmniTutor',
+    descriptionEn: 'Step into your neural AI classroom! OmniTutor is an advanced virtual learning environment led by Mwalimu Bora, a highly specialized, bilingual AI instructor designed to teach you any subject in the universe.',
+    descriptionSw: 'Ingia kwenye darasa lako la kiakili la AI! OmniTutor ni mazingira ya juu ya masomo yanayoongozwa na Mwalimu Bora, mwalimu mahiri wa AI anayeweza kukufundisha mada yoyote ulimwenguni.',
     tipEn: 'Type any topic in the central intake deck to start a new lesson.',
     tipSw: 'Andika mada yoyote kwenye kisanduku cha kuanzia ili kuanza somo jipya.',
     colorName: 'blue'
@@ -236,7 +236,7 @@ export const OrientationTour: React.FC<OrientationTourProps> = ({ language, onCl
             </div>
             <div>
               <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500">
-                {language === 'sw' ? 'Mwongozo wa Kuanza TutorNode' : 'TutorNode Platform Guide'}
+                {language === 'sw' ? 'Onyesho la Haraka la Maelekezo' : 'OmniTutor Core Induction'}
               </h3>
               <p className="text-xs font-bold text-white leading-none mt-1">
                 {language === 'sw' ? 'Jifunze Jinsi ya Kutumia' : 'Platform Orientation Guide'}

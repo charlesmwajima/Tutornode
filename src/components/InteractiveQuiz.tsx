@@ -1,58 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { motion } from 'motion/react';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
-import {
-  collection,
-  addDoc,
-  query,
-  where,
-  orderBy,
-  limit,
-  getDocs,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { auth, db, getAuthHeaders, handleFirestoreError, OperationType } from '../lib/firebase';
-import {
-  Brain,
-  CheckCircle2,
-  XCircle,
-  ArrowLeft,
-  ArrowRight,
-  RotateCcw,
-  X,
-  History,
-  Send,
-} from 'lucide-react';
 
 interface QuizQuestion {
-  type?: 'mcq' | 'short_answer' | string;
   question: string;
   options: string[];
   correctAnswer: string;
-  acceptedKeywords?: string[];
   explanation: string;
-}
-
-interface QuestionAnswerState {
-  selectedAnswer: string;
-  submitted: boolean;
-  isCorrect: boolean;
-  points: number;
-  aiFeedback?: string;
-}
-
-interface QuizAttemptSummary {
-  id: string;
-  topic: string;
-  score: number;
-  total: number;
-  percentage: number;
 }
 
 interface InteractiveQuizProps {
   currentTopic: string;
   whiteboardNotes: string;
-  language: 'en' | 'sw';
+  language: "en" | "sw";
   onClose: () => void;
   onQuizComplete?: (score: number, total: number) => void;
   intelLevel?: string;
@@ -66,550 +26,401 @@ export const InteractiveQuiz: React.FC<InteractiveQuizProps> = ({
   onClose,
   onQuizComplete,
   intelLevel,
-  studyLevel,
+  studyLevel
 }) => {
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<number, QuestionAnswerState>>({});
-  const [shortInput, setShortInput] = useState('');
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [hasAnswered, setHasAnswered] = useState(false);
+  const [score, setScore] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [isGrading, setIsGrading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isFinished, setIsFinished] = useState(false);
-  const [recentAttempts, setRecentAttempts] = useState<QuizAttemptSummary[]>([]);
-  const [showHistory, setShowHistory] = useState(false);
+  const [isQuizFinished, setIsQuizFinished] = useState(false);
 
-  const fetchQuizHistory = useCallback(async () => {
-    if (!auth.currentUser) return;
-    try {
-      const q = query(
-        collection(db, 'quizAttempts'),
-        where('userId', '==', auth.currentUser.uid),
-        orderBy('createdAt', 'desc'),
-        limit(8)
-      );
-      const snap = await getDocs(q);
-      setRecentAttempts(
-        snap.docs.map((d) => ({
-          id: d.id,
-          topic: String(d.data().topic || 'Quiz'),
-          score: Number(d.data().score || 0),
-          total: Number(d.data().total || 1),
-          percentage: Number(d.data().percentage || 0),
-        }))
-      );
-    } catch (err) {
-      handleFirestoreError(err, OperationType.LIST, 'quizAttempts');
-    }
-  }, []);
+  useEffect(() => {
+    generateDynamicQuiz();
+  }, [whiteboardNotes]);
 
-  const generateDynamicQuiz = useCallback(async () => {
+  const generateDynamicQuiz = async () => {
     setIsLoading(true);
     setError(null);
     setQuestions([]);
-    setCurrentIndex(0);
-    setAnswers({});
-    setShortInput('');
-    setIsFinished(false);
-
-    if (!auth.currentUser) {
-      setError(
-        language === 'sw'
-          ? 'Tafadhali ingia kwenye akaunti yako ili kuunda mtihani.'
-          : 'Please sign in to generate a personalized quiz.'
-      );
-      setIsLoading(false);
-      return;
-    }
+    setCurrentQuestionIndex(0);
+    setSelectedOption(null);
+    setHasAnswered(false);
+    setScore(0);
+    setIsQuizFinished(false);
 
     try {
-      const headers = await getAuthHeaders();
       const response = await fetch('/api/generate-quiz', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           whiteboardNotes,
           language,
           topic: currentTopic,
           intelLevel,
           studyLevel,
-          questionCount: 5,
         }),
       });
 
-      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data.error || `Quiz generation failed (${response.status}).`);
+        throw new Error(
+          language === 'sw'
+            ? 'Mlipuko wa neva umeshindwa kupakia maswali.'
+            : 'Neural synthesis failed to fetch quiz questions.'
+        );
       }
 
-      if (Array.isArray(data.questions) && data.questions.length > 0) {
+      const data = await response.json();
+      if (data && data.questions && Array.isArray(data.questions) && data.questions.length > 0) {
         setQuestions(data.questions);
       } else {
-        throw new Error('No quiz questions were returned. Please try again.');
+        throw new Error(
+          language === 'sw'
+            ? 'Data ya jaribio haipo au haitambuliki.'
+            : 'No questions parsed from the neural cluster response.'
+        );
       }
-    } catch (err: unknown) {
-      setError((err as { message?: string })?.message || 'Failed to generate quiz.');
+    } catch (err: any) {
+      console.error('Quiz generation error:', err);
+      setError(err?.message || 'Failed to initialize the neural interactive checkpoint.');
     } finally {
       setIsLoading(false);
     }
-  }, [currentTopic, intelLevel, language, studyLevel, whiteboardNotes]);
-
-  useEffect(() => {
-    generateDynamicQuiz();
-    fetchQuizHistory();
-  }, [generateDynamicQuiz, fetchQuizHistory]);
-
-  const currentQuestion = questions[currentIndex];
-  const currentAnswer = answers[currentIndex];
-  const isShortAnswer =
-    currentQuestion?.type === 'short_answer' ||
-    !Array.isArray(currentQuestion?.options) ||
-    currentQuestion.options.length === 0;
-
-  useEffect(() => {
-    if (isShortAnswer) {
-      setShortInput(currentAnswer?.selectedAnswer || '');
-    }
-  }, [currentIndex, isShortAnswer, currentAnswer?.selectedAnswer]);
-
-  const selectMcqOption = (option: string) => {
-    if (currentAnswer?.submitted) return;
-    setAnswers((prev) => ({
-      ...prev,
-      [currentIndex]: {
-        selectedAnswer: option,
-        submitted: false,
-        isCorrect: false,
-        points: 0,
-      },
-    }));
   };
 
-  const confirmCurrentAnswer = async () => {
-    if (!currentQuestion || currentAnswer?.submitted) return;
-
-    if (isShortAnswer) {
-      const studentText = shortInput.trim();
-      if (!studentText) return;
-      setIsGrading(true);
-      try {
-        const headers = await getAuthHeaders();
-        const resp = await fetch('/api/grade-short-answer', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            question: currentQuestion.question,
-            studentAnswer: studentText,
-            modelAnswer: currentQuestion.correctAnswer,
-            acceptedKeywords: currentQuestion.acceptedKeywords || [],
-            language,
-          }),
-        });
-        const graded = await resp.json().catch(() => ({}));
-        if (!resp.ok) {
-          throw new Error(graded.error || 'Could not grade response.');
-        }
-
-        const pts = Math.max(0, Math.min(1, Number(graded.score ?? (graded.isCorrect ? 1 : 0))));
-        setAnswers((prev) => ({
-          ...prev,
-          [currentIndex]: {
-            selectedAnswer: studentText,
-            submitted: true,
-            isCorrect: Boolean(graded.isCorrect) || pts >= 0.75,
-            points: pts,
-            aiFeedback: graded.feedback || currentQuestion.explanation,
-          },
-        }));
-      } catch (err: unknown) {
-        setError((err as { message?: string })?.message || 'Unable to grade short answer.');
-      } finally {
-        setIsGrading(false);
-      }
-      return;
-    }
-
-    const chosen = currentAnswer?.selectedAnswer;
-    if (!chosen) return;
-    const isCorrect =
-      chosen.trim().toLowerCase() === currentQuestion.correctAnswer.trim().toLowerCase();
-    setAnswers((prev) => ({
-      ...prev,
-      [currentIndex]: {
-        selectedAnswer: chosen,
-        submitted: true,
-        isCorrect,
-        points: isCorrect ? 1 : 0,
-      },
-    }));
+  const handleOptionSelect = (option: string) => {
+    if (hasAnswered) return;
+    setSelectedOption(option);
   };
 
-  const computeTotalScore = () =>
-    questions.reduce((acc, _q, idx) => acc + (answers[idx]?.points || 0), 0);
-
-  const finishQuiz = async () => {
-    const totalPoints = computeTotalScore();
-    const totalCount = questions.length;
-    const percentage = totalCount > 0 ? Math.round((totalPoints / totalCount) * 100) : 0;
-
-    setIsFinished(true);
-    onQuizComplete?.(totalPoints, totalCount);
-
-    if (auth.currentUser && totalCount > 0) {
-      try {
-        await addDoc(collection(db, 'quizAttempts'), {
-          userId: auth.currentUser.uid,
-          topic: (currentTopic || 'Lesson Assessment').slice(0, 300),
-          studyLevel: (studyLevel || 'Undergraduate').slice(0, 80),
-          score: totalPoints,
-          total: totalCount,
-          percentage,
-          answers: questions.map((q, idx) => ({
-            question: q.question.slice(0, 400),
-            userAnswer: (answers[idx]?.selectedAnswer || 'Skipped').slice(0, 500),
-            correctAnswer: q.correctAnswer.slice(0, 500),
-            isCorrect: Boolean(answers[idx]?.isCorrect),
-          })),
-          createdAt: serverTimestamp(),
-        });
-        fetchQuizHistory();
-      } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, 'quizAttempts');
-      }
+  const handleConfirmAnswer = () => {
+    if (!selectedOption || hasAnswered) return;
+    setHasAnswered(true);
+    
+    const currentQuestion = questions[currentQuestionIndex];
+    if (
+      currentQuestion &&
+      selectedOption.trim().toLowerCase() === currentQuestion.correctAnswer.trim().toLowerCase()
+    ) {
+      setScore((prev) => prev + 1);
     }
   };
 
   const handleNext = () => {
-    if (currentIndex < questions.length - 1) {
-      setCurrentIndex((prev) => prev + 1);
+    setSelectedOption(null);
+    setHasAnswered(false);
+
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex((prev) => prev + 1);
     } else {
-      finishQuiz();
+      setIsQuizFinished(true);
+      if (onQuizComplete) {
+        onQuizComplete(score, questions.length);
+      }
     }
   };
 
-  const totalScore = computeTotalScore();
-  const submittedCount = Object.values(answers).filter((a) => a.submitted).length;
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // If we are currently loading, showing an error, or the quiz is finished, ignore keys
+      if (isLoading || error || isQuizFinished) return;
+
+      const currentQuestion = questions[currentQuestionIndex];
+      if (!currentQuestion) return;
+
+      if (!hasAnswered) {
+        if (['1', '2', '3', '4'].includes(event.key)) {
+          const index = parseInt(event.key, 10) - 1;
+          if (currentQuestion.options && currentQuestion.options[index]) {
+            handleOptionSelect(currentQuestion.options[index]);
+          }
+        } else if (event.key === 'Enter') {
+          handleConfirmAnswer();
+        }
+      } else {
+        if (event.key === 'Enter') {
+          handleNext();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isLoading, error, isQuizFinished, questions, currentQuestionIndex, hasAnswered, selectedOption]);
+
+  const getCardBgColor = (option: string) => {
+    const isSelected = selectedOption === option;
+
+    if (!hasAnswered) {
+      if (isSelected) {
+        return 'bg-blue-500/10 border-blue-500 text-blue-300 shadow-[0_0_15px_rgba(59,130,246,0.15)] cursor-pointer';
+      }
+      return 'bg-slate-800/40 hover:bg-slate-800/80 hover:border-blue-500/50 border-white/5 text-white/90 cursor-pointer';
+    }
+    
+    const currentQuestion = questions[currentQuestionIndex];
+    if (!currentQuestion) return 'bg-slate-900/20 border-white/5 opacity-40 text-white/50 cursor-not-allowed';
+    const isCorrectChoice = option.trim().toLowerCase() === currentQuestion.correctAnswer.trim().toLowerCase();
+
+    if (isCorrectChoice) {
+      return 'bg-emerald-500/20 border-emerald-500 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.2)]';
+    }
+    if (isSelected && !isCorrectChoice) {
+      return 'bg-red-500/20 border-red-500 text-red-300 shadow-[0_0_15px_rgba(239,68,68,0.2)]';
+    }
+    return 'bg-slate-900/20 border-white/5 opacity-40 text-white/50 cursor-not-allowed';
+  };
+
+  const currentQuestion = questions[currentQuestionIndex];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
       <motion.div
-        initial={{ opacity: 0, scale: 0.96 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.96 }}
-        className="relative w-full max-w-2xl bg-slate-900 border border-white/10 rounded-3xl shadow-2xl p-5 sm:p-7 flex flex-col max-h-[92vh]"
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        className="relative w-full max-w-2xl bg-slate-900 border border-white/10 rounded-[2.5rem] shadow-2xl p-6 md:p-8 flex flex-col overflow-hidden max-h-[90vh]"
       >
-        <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-5 gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="p-2.5 bg-blue-500/15 border border-blue-500/30 rounded-xl text-blue-400 shrink-0">
-              <Brain size={18} />
+        {/* Ambient Top Glow */}
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-60"></div>
+
+        {/* Header bar */}
+        <div className="flex items-center justify-between border-b border-white/10 pb-4 mb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-500/10 border border-blue-500/20 rounded-xl text-blue-400">
+              <i className="fas fa-brain text-sm"></i>
             </div>
-            <div className="min-w-0">
-              <h3 className="text-sm font-bold text-white truncate">
-                {language === 'sw' ? 'Mtihani wa Ufahamu' : 'Interactive Assessment'}
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-widest text-slate-400">
+                {language === 'sw' ? 'Jaribio la Ufahamu' : 'Neural Checkpoint'}
               </h3>
-              <p className="text-xs text-blue-400 truncate">
-                {currentTopic || 'Lesson Topic'}
+              <p className="text-[10px] font-mono text-blue-400 tracking-wider">
+                {currentTopic || (language === 'sw' ? 'Mada Amilifu' : 'Active Topic')}
               </p>
             </div>
           </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {recentAttempts.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowHistory((prev) => !prev)}
-                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-slate-300 flex items-center gap-1.5"
-              >
-                <History size={13} />
-                <span>{showHistory ? 'Quiz' : 'History'}</span>
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Close quiz"
-              className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center"
-            >
-              <X size={16} />
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition-colors"
+          >
+            <i className="fas fa-times"></i>
+          </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto pr-1 custom-scrollbar">
-          {showHistory ? (
-            <div className="space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                Recent Quiz Results
-              </h4>
-              {recentAttempts.map((att) => (
-                <div
-                  key={att.id}
-                  className="p-3.5 rounded-2xl bg-slate-950/60 border border-white/10 flex items-center justify-between gap-3"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-white truncate">{att.topic}</p>
-                    <p className="text-xs text-slate-400">
-                      Score: {att.score} / {att.total}
-                    </p>
-                  </div>
-                  <span
-                    className={`px-3 py-1 rounded-full text-xs font-bold tabular-nums ${
-                      att.percentage >= 70
-                        ? 'bg-emerald-500/20 text-emerald-300'
-                        : att.percentage >= 50
-                        ? 'bg-amber-500/20 text-amber-300'
-                        : 'bg-red-500/20 text-red-300'
-                    }`}
-                  >
-                    {att.percentage}%
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : isLoading ? (
-            <div className="flex flex-col items-center justify-center py-14 gap-3">
-              <div className="w-9 h-9 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin" />
-              <p className="text-xs text-slate-400">
-                {language === 'sw'
-                  ? 'Kuandaa maswali ya mtihani...'
-                  : 'Preparing personalized questions from your lesson...'}
+        {/* Content body */}
+        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+              <div className="w-10 h-10 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+              <p className="text-xs font-mono text-slate-400 uppercase tracking-widest">
+                {language === 'sw' ? 'Nikijenga maswali mapya kutoka kwenye maelezo...' : 'Analyzing lesson notes to design checkpoint...'}
               </p>
             </div>
           ) : error ? (
-            <div className="text-center py-10 space-y-4">
-              <p className="text-sm text-red-300">{error}</p>
+            <div className="text-center py-10">
+              <div className="w-12 h-12 bg-red-500/10 border border-red-500/20 rounded-full flex items-center justify-center mx-auto text-red-500 mb-4">
+                <i className="fas fa-exclamation-triangle text-xl"></i>
+              </div>
+              <p className="text-xs font-mono text-red-400 mb-6">{error}</p>
               <button
-                type="button"
                 onClick={generateDynamicQuiz}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold"
+                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
               >
-                <RotateCcw size={14} /> Retry Quiz Generation
+                {language === 'sw' ? 'Jaribu Tena' : 'Retry Neural Generation'}
               </button>
             </div>
-          ) : isFinished ? (
-            <div className="space-y-6 py-2">
-              <div className="text-center bg-slate-950/60 border border-white/10 rounded-2xl p-6">
-                <div className="text-3xl font-extrabold text-white tabular-nums">
-                  {totalScore} / {questions.length}
-                </div>
-                <p className="text-sm font-semibold text-blue-400 mt-1">
-                  {questions.length > 0 ? Math.round((totalScore / questions.length) * 100) : 0}% Mastery Score
-                </p>
-                <p className="text-xs text-slate-400 mt-2">
-                  Review your answers and teacher explanations below.
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                {questions.map((q, idx) => {
-                  const ans = answers[idx];
-                  return (
-                    <div
-                      key={idx}
-                      className={`p-4 rounded-2xl border ${
-                        ans?.isCorrect
-                          ? 'bg-emerald-950/25 border-emerald-500/30'
-                          : 'bg-red-950/20 border-red-500/25'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <span className="text-xs font-bold text-slate-300">
-                          Q{idx + 1}. {q.question}
-                        </span>
-                        {ans?.isCorrect ? (
-                          <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-                        ) : (
-                          <XCircle size={16} className="text-red-400 shrink-0" />
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-300">
-                        <span className="text-slate-400">Your Answer:</span>{' '}
-                        {ans?.selectedAnswer || 'Not answered'}
-                      </p>
-                      {!ans?.isCorrect && (
-                        <p className="text-xs text-emerald-300 mt-1">
-                          <span className="text-slate-400">Model Answer:</span> {q.correctAnswer}
-                        </p>
-                      )}
-                      <div className="text-xs text-slate-400 mt-2 pt-2 border-t border-white/5 prose prose-invert prose-xs max-w-none">
-                        <Markdown>{ans?.aiFeedback || q.explanation}</Markdown>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={generateDynamicQuiz}
-                  className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-xs flex items-center gap-2"
-                >
-                  <RotateCcw size={13} /> New Quiz
-                </button>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl text-xs"
-                >
-                  Back to Classroom
-                </button>
-              </div>
-            </div>
-          ) : currentQuestion ? (
-            <div className="space-y-5">
-              {/* Question Navigation Strip */}
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-slate-400 tabular-nums">
-                  Question {currentIndex + 1} of {questions.length} ({submittedCount} answered)
-                </span>
-                <div className="flex items-center gap-1.5">
-                  {questions.map((_, idx) => {
-                    const st = answers[idx];
-                    return (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setCurrentIndex(idx)}
-                        className={`w-7 h-7 rounded-lg text-xs font-bold transition-all ${
-                          idx === currentIndex
-                            ? 'bg-blue-600 text-white'
-                            : st?.submitted
-                            ? st.isCorrect
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                              : 'bg-red-500/20 text-red-300 border border-red-500/40'
-                            : 'bg-slate-800 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        {idx + 1}
-                      </button>
-                    );
-                  })}
+          ) : isQuizFinished ? (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="text-center py-8"
+            >
+              <div className="relative w-36 h-36 mx-auto mb-8 flex items-center justify-center">
+                <div className="absolute inset-0 bg-blue-500/5 rounded-full blur-xl animate-pulse"></div>
+                <div className="w-28 h-28 border-4 border-blue-500/10 border-t-blue-500 rounded-full flex items-center justify-center">
+                  <div className="text-center">
+                    <span className="text-3xl font-black text-white font-mono leading-none">{score}</span>
+                    <span className="text-sm font-bold text-slate-500 font-mono block">/ {questions.length}</span>
+                  </div>
                 </div>
               </div>
 
-              <h4 className="text-base sm:text-lg font-bold text-white leading-snug">
-                {currentQuestion.question}
+              <h4 className="text-xl font-bold text-white uppercase tracking-widest mb-3">
+                {language === 'sw' ? 'Jaribio Limekamilika!' : 'Uplink Synchronization Complete'}
               </h4>
 
-              {isShortAnswer ? (
-                <div className="space-y-3">
-                  <textarea
-                    rows={4}
-                    value={shortInput}
-                    disabled={Boolean(currentAnswer?.submitted) || isGrading}
-                    onChange={(e) => setShortInput(e.target.value)}
-                    placeholder={
-                      language === 'sw'
-                        ? 'Andika jibu lako kwa ufupi hapa...'
-                        : 'Write your explanation or solution step here...'
-                    }
-                    className="w-full bg-slate-950/80 border border-white/10 rounded-2xl p-3.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
-                  />
+              <p className="text-slate-400 text-xs leading-relaxed max-w-md mx-auto mb-8 font-serif">
+                {score === questions.length
+                  ? (language === 'sw'
+                      ? 'Kazi nzuri sana! Ulinganishaji wa mawimbi ya ubongo ni 100%. Umeweza kujifunza maelezo yote kikamilifu.'
+                      : 'Perfection achieved. Neuro-conceptual synchronization is at 100%. You have integrated all core assertions perfectly.')
+                  : score >= questions.length / 2
+                  ? (language === 'sw'
+                      ? 'Nguvu nzuri ya utendaji ya kiakili. Umeweza kujibu dhana nyingi kwa usahihi.'
+                      : 'Robust intellectual performance. Most core concept arrays have been synchronized successfully.')
+                  : (language === 'sw'
+                      ? 'Uchambuzi unaonyesha ufaulu ulio chini kidogo. Inapendekezwa kupitia upya maelezo ya ubao kabla ya kujaribu tena.'
+                      : 'Conceptual alignment is partial. Re-review of whiteboard segments is recommended before repeating evaluation.')}
+              </p>
+
+              <div className="flex items-center justify-center gap-4">
+                <button
+                  onClick={generateDynamicQuiz}
+                  className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-[10px] uppercase tracking-widest transition-all"
+                >
+                  {language === 'sw' ? 'Anza upya' : 'Restart Quiz'}
+                </button>
+                <button
+                  onClick={onClose}
+                  className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-blue-500/20"
+                >
+                  {language === 'sw' ? 'Funga' : 'Resume Dashboard'}
+                </button>
+              </div>
+            </motion.div>
+          ) : (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentQuestionIndex}
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                className="space-y-6"
+              >
+                {/* Progress bar / index */}
+                <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-widest text-slate-500">
+                  <span>
+                    {language === 'sw' ? 'Swali' : 'Evaluation'} {currentQuestionIndex + 1} of {questions.length}
+                  </span>
+                  <div className="flex gap-1.5">
+                    {questions.map((_, idx) => (
+                      <div
+                        key={`progress-dot-${idx}`}
+                        className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
+                          idx === currentQuestionIndex
+                            ? 'bg-blue-500 w-4'
+                            : idx < currentQuestionIndex
+                            ? 'bg-emerald-500'
+                            : 'bg-slate-800'
+                        }`}
+                      />
+                    ))}
+                  </div>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-2.5">
+
+                {/* The actual question */}
+                <h4 className="text-lg font-bold text-white leading-relaxed">
+                  {currentQuestion.question}
+                </h4>
+
+                {/* Multiple choice options */}
+                <div className="grid grid-cols-1 gap-3">
                   {currentQuestion.options.map((option, idx) => {
-                    const isSelected = currentAnswer?.selectedAnswer === option;
-                    const submitted = Boolean(currentAnswer?.submitted);
-                    const isCorrectChoice =
-                      option.trim().toLowerCase() ===
-                      currentQuestion.correctAnswer.trim().toLowerCase();
-
-                    let btnClass =
-                      'bg-slate-800/50 hover:bg-slate-800 border-white/10 text-slate-200';
-                    if (!submitted && isSelected) {
-                      btnClass = 'bg-blue-600/20 border-blue-500 text-white';
-                    } else if (submitted && isCorrectChoice) {
-                      btnClass = 'bg-emerald-500/20 border-emerald-500 text-emerald-200';
-                    } else if (submitted && isSelected && !isCorrectChoice) {
-                      btnClass = 'bg-red-500/20 border-red-500 text-red-200';
-                    } else if (submitted) {
-                      btnClass = 'bg-slate-900/40 border-white/5 text-slate-500';
-                    }
-
+                    const optionLetter = String.fromCharCode(65 + idx); // A, B, C, D
                     return (
                       <button
-                        key={idx}
-                        type="button"
-                        disabled={submitted}
-                        onClick={() => selectMcqOption(option)}
-                        className={`flex items-start text-left p-3.5 rounded-2xl border transition-all text-sm gap-3 ${btnClass}`}
+                        key={`quiz-choice-${idx}`}
+                        disabled={hasAnswered}
+                        onClick={() => handleOptionSelect(option)}
+                        className={`flex items-start text-left p-4 rounded-2xl border transition-all text-sm group ${getCardBgColor(
+                          option
+                        )}`}
                       >
-                        <span className="w-6 h-6 rounded-lg bg-slate-950/60 flex items-center justify-center text-xs font-bold shrink-0">
-                          {String.fromCharCode(65 + idx)}
+                        <span className="w-6 h-6 shrink-0 flex items-center justify-center font-mono font-bold text-xs bg-slate-950/45 rounded-lg mr-3 text-slate-400 group-hover:text-white transition-colors">
+                          {optionLetter}
                         </span>
-                        <span className="flex-1 leading-snug">{option}</span>
+                        <span className="flex-1 pt-0.5 leading-snug">{option}</span>
+                        {!hasAnswered && (
+                          <span className="shrink-0 text-[10px] font-mono text-slate-500 bg-slate-950/30 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity ml-2">
+                            Key {idx + 1}
+                          </span>
+                        )}
+                        {hasAnswered && (
+                          <div className="shrink-0 ml-3 mt-0.5">
+                            {option.trim().toLowerCase() === currentQuestion.correctAnswer.trim().toLowerCase() ? (
+                              <i className="fas fa-check-circle text-emerald-400 text-lg"></i>
+                            ) : selectedOption === option ? (
+                              <i className="fas fa-times-circle text-red-400 text-lg"></i>
+                            ) : null}
+                          </div>
+                        )}
                       </button>
                     );
                   })}
                 </div>
-              )}
 
-              {currentAnswer?.submitted && (
-                <div className="p-4 rounded-2xl bg-slate-950/70 border border-white/10 space-y-2">
-                  <div className="flex items-center justify-between text-xs font-bold">
-                    <span className={currentAnswer.isCorrect ? 'text-emerald-400' : 'text-amber-300'}>
-                      {currentAnswer.isCorrect
-                        ? 'Correct Reasoning'
-                        : isShortAnswer && currentAnswer.points > 0
-                        ? `Partial Credit (${currentAnswer.points}/1)`
-                        : 'Review Needed'}
+                {/* Teacher's explanation card (appears only on submission) */}
+                <AnimatePresence>
+                  {hasAnswered && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 15 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="p-5 bg-slate-950/40 rounded-2xl border border-white/5 space-y-2 mt-4"
+                    >
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-blue-400 pb-2 border-b border-white/5">
+                        <i className="fas fa-glasses text-xs"></i>
+                        <span>{language === 'sw' ? 'Ufafanuzi wa Mwalimu Bora' : 'Educator Briefing'}</span>
+                      </div>
+                      <div className="text-xs text-slate-300 leading-relaxed font-serif prose prose-invert max-w-none">
+                        <Markdown>{currentQuestion.explanation}</Markdown>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Confirm / Next Button Toolbar */}
+                <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                  {/* Keyboard Tips */}
+                  {!hasAnswered ? (
+                    <span className="flex items-center gap-1.5 text-[9px] font-mono text-slate-500 tracking-wider">
+                      <kbd className="bg-slate-800 border border-white/10 px-1 py-0.5 rounded text-slate-300">1</kbd>-
+                      <kbd className="bg-slate-800 border border-white/10 px-1 py-0.5 rounded text-slate-300">4</kbd> {language === 'sw' ? 'Kuteua' : 'To Select'}
+                      {selectedOption && (
+                        <>
+                          <span className="mx-1 text-slate-700">•</span>
+                          <kbd className="bg-slate-800 border border-white/10 px-1.5 py-0.5 rounded text-slate-300">Enter</kbd> {language === 'sw' ? 'Mwasilishe' : 'To Confirm'}
+                        </>
+                      )}
                     </span>
-                    {isShortAnswer && (
-                      <span className="text-slate-400">Model Answer: {currentQuestion.correctAnswer}</span>
-                    )}
-                  </div>
-                  <div className="text-xs text-slate-300 prose prose-invert prose-xs max-w-none">
-                    <Markdown>{currentAnswer.aiFeedback || currentQuestion.explanation}</Markdown>
-                  </div>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-[9px] font-mono text-slate-500 tracking-wider">
+                      <kbd className="bg-slate-800 border border-white/10 px-1.5 py-0.5 rounded text-slate-300">Enter</kbd> {language === 'sw' ? 'Kuendelea' : 'To Proceed'}
+                    </span>
+                  )}
+
+                  {/* Actions */}
+                  {!hasAnswered ? (
+                    <button
+                      disabled={!selectedOption}
+                      onClick={handleConfirmAnswer}
+                      className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:hover:bg-blue-600 text-white font-bold rounded-xl text-[10px] uppercase tracking-widest transition-all shadow-lg hover:shadow-blue-500/20 active:scale-95"
+                    >
+                      <span>{language === 'sw' ? 'Wasilisha Jibu' : 'Confirm Choice'}</span>
+                      <i className="fas fa-check text-[8px]"></i>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleNext}
+                      className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-[10px] uppercase tracking-widest transition-all shadow-lg hover:shadow-emerald-500/20 active:scale-95 animate-fade-in"
+                    >
+                      <span>
+                        {currentQuestionIndex === questions.length - 1
+                          ? (language === 'sw' ? 'Maliza Jaribio' : 'Finish Evaluation')
+                          : (language === 'sw' ? 'Swali Jipya' : 'Proceed')}
+                      </span>
+                      <i className="fas fa-arrow-right text-[8px]"></i>
+                    </button>
+                  )}
                 </div>
-              )}
-
-              <div className="flex items-center justify-between pt-4 border-t border-white/10 gap-3">
-                <button
-                  type="button"
-                  disabled={currentIndex === 0}
-                  onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-xs font-semibold text-slate-200 flex items-center gap-1.5"
-                >
-                  <ArrowLeft size={14} /> Previous
-                </button>
-
-                {!currentAnswer?.submitted ? (
-                  <button
-                    type="button"
-                    disabled={
-                      isGrading ||
-                      (isShortAnswer ? !shortInput.trim() : !currentAnswer?.selectedAnswer)
-                    }
-                    onClick={confirmCurrentAnswer}
-                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white text-xs font-bold flex items-center gap-1.5"
-                  >
-                    {isGrading ? (
-                      <>
-                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Grading...
-                      </>
-                    ) : (
-                      <>
-                        <Send size={13} /> Submit Answer
-                      </>
-                    )}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleNext}
-                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5"
-                  >
-                    <span>{currentIndex === questions.length - 1 ? 'Finish & Review' : 'Next Question'}</span>
-                    <ArrowRight size={14} />
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : null}
+              </motion.div>
+            </AnimatePresence>
+          )}
         </div>
       </motion.div>
     </div>
